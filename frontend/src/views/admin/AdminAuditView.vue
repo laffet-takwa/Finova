@@ -13,7 +13,7 @@ import Pagination from '@/components/ui/Pagination.vue'
 import SearchInput from '@/components/ui/SearchInput.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { adminApi } from '@/api/adminApi'
+import { adminApi } from '@/api'
 import { formatDateTime, formatRelative } from '@/utils/format'
 import type { AuditLogEntry, AuditResult, PageResponse } from '@/types'
 

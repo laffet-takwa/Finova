@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { fraudApi, type FraudFilters } from '@/api/fraudApi'
+// Through `@/api`, not `@/api/fraudApi`, so the risk console honours mock mode.
+import { fraudApi } from '@/api'
+import type { FraudFilters } from '@/api/fraudApi'
 import type { FraudAlert, FraudStatsSummary, PageResponse } from '@/types'
 
 export const useFraudStore = defineStore('fraud', () => {

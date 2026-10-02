@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { adminApi, type AdminUserFilters } from '@/api/adminApi'
-import { accountApi, userApi } from '@/api'
-import { transactionApi } from '@/api/transactionApi'
+// Importing through `@/api` is what makes mock mode apply to the admin console:
+// `@/api/adminApi` is the always-HTTP module, so a direct import would bypass it.
+import { accountApi, adminApi, transactionApi, userApi } from '@/api'
+import type { AdminUserFilters } from '@/api/adminApi'
 import type {
   Account,
   AccountFilters,
