@@ -1,0 +1,16 @@
+{
+  "name": "finova-tooling",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Repository-level dev tooling. The application itself lives in frontend/ (npm) and backend/ (Maven); this package only carries the tools that operate across both.",
+  "scripts": {
+    "contracts": "node scripts/check-contracts.mjs",
+    "screenshots": "node scripts/capture-screenshots.mjs",
+    "screenshots:mobile": "node scripts/capture-screenshots.mjs --mobile --out=docs/screenshots/mobile",
+    "verify": "npm run contracts"
+  },
+  "devDependencies": {
+    "puppeteer": "^25.12.0"
+  }
+}

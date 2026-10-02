@@ -66,6 +66,100 @@ what it does and does not do.
 
 ---
 
+## Screenshots
+
+Captured from a running instance in mock mode, at 1440×900 and 390×844.
+Regenerate with `npm run dev` in `frontend/`, then:
+
+```bash
+npm install                  # once, installs puppeteer
+node scripts/capture-screenshots.mjs              # desktop
+node scripts/capture-screenshots.mjs --mobile --out=docs/screenshots/mobile
+```
+
+### Authentication
+
+| Login | Register |
+|---|---|
+| ![Login](docs/screenshots/login.png) | ![Register](docs/screenshots/register.png) |
+
+### Customer dashboard
+
+Total balance, income/expense/transaction cards, a 30-day cash-flow chart, the
+account strip and recent activity. Balances can be hidden with one click.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Accounts
+
+| My accounts | Open a new account |
+|---|---|
+| ![Accounts](docs/screenshots/accounts.png) | ![New account](docs/screenshots/accounts-new-account.png) |
+
+### Account detail
+
+Balance hero, the full account record with a copyable number, and a balance
+history reconstructed from real ledger movements — never an invented series.
+
+![Account detail](docs/screenshots/account-detail.png)
+
+### Sending money
+
+The four-step flow. The idempotency key is minted at step 2 and carried through
+the review, so a retry can never double-debit.
+
+| Step 1–2 · recipient and amount | Step 3 · review |
+|---|---|
+| ![Transfer](docs/screenshots/transfer.png) | ![Review](docs/screenshots/transfer-review.png) |
+
+### Transactions
+
+Filters expand into type, status, account, currency and amount range. The table
+becomes cards below the `lg` breakpoint.
+
+| Transactions | Filters open |
+|---|---|
+| ![Transactions](docs/screenshots/transactions-filters.png) | ![Filters](docs/screenshots/transactions-filters.png) |
+
+### Transaction detail
+
+With the lifecycle timeline. Every step shows its real state, and a timestamp is
+rendered only when the backend actually supplied one.
+
+![Transaction detail](docs/screenshots/transaction-detail.png)
+
+### Notifications
+
+![Notifications](docs/screenshots/notifications.png)
+
+### Security centre
+
+Two-factor authentication is shown as **Not enabled** rather than a green tick,
+and sign-in locations render as "not provided by Finova" rather than guessing a
+city from an IP address.
+
+![Security](docs/screenshots/security.png)
+
+### Settings
+
+| Profile | Notification preferences |
+|---|---|
+| ![Settings](docs/screenshots/settings.png) | ![Preferences](docs/screenshots/settings-notifications.png) |
+
+### Mobile
+
+The layout is redesigned rather than shrunk: a drawer, bottom navigation and
+single-column cards.
+
+| Dashboard | Transactions |
+|---|---|
+| ![Mobile dashboard](docs/screenshots/mobile/dashboard.mobile.png) | ![Mobile transactions](docs/screenshots/mobile/transactions-filters.mobile.png) |
+
+> Administrator and fraud-operation screens are captured by the same script once
+> those views land; see [Known gaps](#known-gaps).
+
+---
+
 ## Architecture
 
 ### System context
