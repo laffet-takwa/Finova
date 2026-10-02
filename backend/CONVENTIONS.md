@@ -90,15 +90,43 @@ Inside controllers/services use `CurrentUser.userId()`, `CurrentUser.isAdmin()` 
 
 ### Canonical non-web wiring for a servlet service
 
+`CorrelationIdFilter` and `GlobalExceptionHandler` live in `com.finova.common.web`,
+which is **outside** every service's `com.finova.<svc>` component-scan root.
+Neither is auto-registered, so both must be declared as explicit beans:
+
 ```java
 @Configuration
 public class WebSupportConfig {
+
+    /** Both are outside this service's component-scan root; without these
+     *  beans a BusinessException escapes as a raw servlet 500 with no
+     *  ApiError envelope, and every client error branch silently breaks. */
     @Bean CorrelationIdFilter correlationIdFilter() { return new CorrelationIdFilter(); }
+
+    @Bean GlobalExceptionHandler globalExceptionHandler() { return new GlobalExceptionHandler(); }
 }
 ```
 
+A service that needs extra exception mappings subclasses `GlobalExceptionHandler`
+and registers the subclass instead — the `@RestControllerAdvice` on the parent is
+inherited.
+
 `CorrelationIdFilter` is a `Filter` bean, so Spring Boot auto-registers it. It also has
 `@Order(HIGHEST_PRECEDENCE)`, so it runs before the Spring Security chain.
+
+### Two Spring behaviours that have bitten this project
+
+1. **`@EnableJpaAuditing` on the application class breaks `@WebMvcTest`.** The web
+   slice has no JPA metamodel, so context startup fails with "JPA metamodel must not
+   be empty". Put it in a `@Configuration` guarded by
+   `@ConditionalOnBean(EntityManagerFactory.class)` instead, or register it as an
+   `@AutoConfiguration` through `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+2. **`TransactionEvent.isFlagged()` is serialised by Jackson** as an extra
+   `flagged` property alongside the record components, so a consumer using
+   `objectMapper.convertValue(value, new TypeReference<DomainEvent<TransactionEvent>>(){})`
+   hits `UnrecognizedPropertyException` on a raw `new ObjectMapper()`. Spring Boot's
+   auto-configured mapper disables `FAIL_ON_UNKNOWN_PROPERTIES`, so production is
+   fine — but hand-rolled mappers in tests must do the same.
 
 To read the correlation id inside a service method: inject `HttpServletRequest`, or use
 `org.slf4j.MDC.get("correlationId")`. When publishing a Kafka event, pass the correlation id from
