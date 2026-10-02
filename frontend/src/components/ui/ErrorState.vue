@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useAttrs } from 'vue'
 import { AlertTriangle, RefreshCw, WifiOff } from 'lucide-vue-next'
 
 const props = withDefaults(
@@ -22,6 +22,15 @@ const props = withDefaults(
 )
 
 defineEmits<{ retry: [] }>()
+
+const attrs = useAttrs()
+
+/**
+ * The retry button only appears when the host actually listens for `retry`.
+ * Gating it on slot content (as this once did) hid the button on every view,
+ * leaving every error state unactionable.
+ */
+const canRetry = computed(() => typeof attrs.onRetry === 'function')
 
 const icon = computed(() => (props.offline ? WifiOff : AlertTriangle))
 </script>
@@ -52,7 +61,7 @@ const icon = computed(() => (props.offline ? WifiOff : AlertTriangle))
     </p>
 
     <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
-      <button v-if="$slots.default" type="button" class="fin-btn-secondary" @click="$emit('retry')">
+      <button v-if="canRetry" type="button" class="fin-btn-secondary" @click="$emit('retry')">
         <RefreshCw :size="15" aria-hidden="true" />
         {{ retryLabel }}
       </button>
