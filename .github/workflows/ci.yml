@@ -159,6 +159,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Frontend ↔ backend contract check
+        # The SPA types and the Java response records were written independently.
+        # A field-name drift between them renders fine and silently shows
+        # `undefined`, so it is checked explicitly rather than discovered by a
+        # user.
+        run: npm run contracts
+
       - name: Build
         run: npm run build:only
 

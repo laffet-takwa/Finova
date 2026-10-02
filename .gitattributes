@@ -1,0 +1,29 @@
+# Normalise line endings so a file committed on Windows and checked out on
+# Linux does not show as a whole-file diff.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.java text
+*.xml text
+*.yml text
+*.yaml text
+*.json text
+*.ts text
+*.vue text
+*.css text
+*.html text
+*.md text
+*.sql text
+*.sh text eol=lf
+*.mjs text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.jar binary
+*.zip binary
