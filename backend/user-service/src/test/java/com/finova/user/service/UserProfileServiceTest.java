@@ -4,7 +4,6 @@ import com.finova.common.domain.Role;
 import com.finova.common.domain.UserStatus;
 import com.finova.common.error.BusinessException;
 import com.finova.common.error.ErrorCode;
-import com.finova.common.web.PageResponse;
 import com.finova.user.domain.AuditLog;
 import com.finova.user.domain.User;
 import com.finova.user.dto.AdminStatsResponse;
@@ -22,10 +21,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -285,13 +286,20 @@ class UserProfileServiceTest {
                 any(org.springframework.data.domain.Pageable.class)))
                 .thenReturn(org.springframework.data.domain.Page.empty());
 
-        PageResponse<UserSummaryResponse> first = PageResponse.from(
-                adminUserService.list(null, null, null, 0, 5_000));
-        PageResponse<UserSummaryResponse> second = PageResponse.from(
-                adminUserService.list(null, null, null, 0, 0));
+        adminUserService.list(null, null, null, 0, 5_000);
+        adminUserService.list(null, null, null, 0, 0);
+        adminUserService.list(null, null, null, -3, 25);
 
-        assertThat(first.size()).isEqualTo(100);
-        assertThat(second.size()).isEqualTo(20);
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(userRepository, org.mockito.Mockito.times(3))
+                .findAll(any(org.springframework.data.jpa.domain.Specification.class), captor.capture());
+        assertThat(captor.getAllValues().get(0).getPageSize()).isEqualTo(100);
+        assertThat(captor.getAllValues().get(1).getPageSize()).isEqualTo(20);
+        assertThat(captor.getAllValues().get(2).getPageSize()).isEqualTo(25);
+        assertThat(captor.getAllValues().get(2).getPageNumber()).isZero();
+        // Newest first, so the admin list matches the audit feed's ordering.
+        assertThat(captor.getAllValues().get(0).getSort().getOrderFor("createdAt").isDescending())
+                .isTrue();
     }
 
     private User user() {
