@@ -1,8 +1,8 @@
 package com.finova.notification.controller;
 
 import com.finova.common.web.PageResponse;
+import com.finova.notification.dto.AdminNotificationResponse;
 import com.finova.notification.dto.NotificationFilters;
-import com.finova.notification.dto.NotificationResponse;
 import com.finova.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -42,14 +42,16 @@ public class NotificationAdminController {
 
     @GetMapping("/feed")
     @Operation(summary = "Platform-wide notification feed",
-            description = "Newest first across every customer. Optionally narrowed to one user id.")
+            description = "Newest first across every customer. Rows carry the owner id and a masked "
+                    + "owner hint, which is why they use a different type from the customer inbox. "
+                    + "Optionally narrowed to one user id.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "One page of inbox entries",
+            @ApiResponse(responseCode = "200", description = "One page of activity rows",
                     content = @Content(schema = @Schema(implementation = PageResponse.class))),
             @ApiResponse(responseCode = "401", description = "Authentication is required", ref = "#/components/responses/Unauthorized"),
             @ApiResponse(responseCode = "403", description = "An ADMIN token is required", ref = "#/components/responses/Forbidden")
     })
-    public ResponseEntity<PageResponse<NotificationResponse>> feed(
+    public ResponseEntity<PageResponse<AdminNotificationResponse>> feed(
             @Parameter(description = "Restrict the feed to one user id. Administrators only.")
             @RequestParam(required = false) String userId,
             @RequestParam(required = false) String type,

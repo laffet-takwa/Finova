@@ -7,6 +7,7 @@ import com.finova.common.web.PageResponse;
 import com.finova.notification.domain.Notification;
 import com.finova.notification.domain.NotificationCategory;
 import com.finova.notification.domain.NotificationPreference;
+import com.finova.notification.dto.AdminNotificationResponse;
 import com.finova.notification.dto.DailyCount;
 import com.finova.notification.dto.MarkAllReadResponse;
 import com.finova.notification.dto.NotificationFilters;
@@ -29,8 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -73,14 +74,16 @@ public class NotificationService {
 
     /**
      * Administrator view across every customer, optionally narrowed to one user.
+     * Returns the owner-bearing row type; the customer inbox keeps using
+     * {@link #list(String, NotificationFilters)} and never sees an owner id.
      * Only reachable from a request that already cleared an ADMIN authorisation.
      */
     @Transactional(readOnly = true)
-    public PageResponse<NotificationResponse> adminFeed(String userId, NotificationFilters filters) {
+    public PageResponse<AdminNotificationResponse> adminFeed(String userId, NotificationFilters filters) {
         Specification<Notification> specification = userId == null || userId.isBlank()
                 ? NotificationSpecifications.forAdmin(filters)
                 : NotificationSpecifications.forUser(userId, filters);
-        return PageResponse.from(findAll(specification, filters), notificationMapper::toResponse);
+        return PageResponse.from(findAll(specification, filters), notificationMapper::toAdminResponse);
     }
 
     private Page<Notification> findAll(Specification<Notification> specification, NotificationFilters filters) {
