@@ -91,14 +91,10 @@ public class AuthController {
     @PostMapping("/logout")
     @Operation(summary = "End a session",
             description = "Revokes the presented refresh token. Always answers 204, including for an "
-                    + "unknown or already unusable token, so the client can clear local state "
-                    + "unconditionally. A bearer access token is still expected so an audit row can name "
-                    + "who ended the session.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Session ended (or already ended)"),
-            @ApiResponse(responseCode = "401", description = "Authentication is required",
-                    content = @Content(schema = @Schema(implementation = com.finova.common.error.ApiError.class)))
-    })
+                    + "unknown, malformed or absent token, so the client can clear local state "
+                    + "unconditionally. A bearer access token may still be sent so the audit row can "
+                    + "name who ended the session, but it is not required.")
+    @ApiResponses(@ApiResponse(responseCode = "204", description = "Session ended (or already ended)"))
     public ResponseEntity<Void> logout(@RequestBody(required = false) LogoutRequest request) {
         String refreshToken = request == null ? null : request.refreshToken();
         authService.logout(refreshToken);
