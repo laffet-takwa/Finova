@@ -1,0 +1,22 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    show-sql: false
+  cloud:
+    service-registry:
+      eureka:
+        client:
+          register-with-eureka: true
+          fetch-registry: true
+
+finova:
+  notifications:
+    outbox-interval-ms: 1000
+    retention-days: 90
+
+logging:
+  level:
+    com.finova.notification: DEBUG
+    org.springframework.kafka: WARN

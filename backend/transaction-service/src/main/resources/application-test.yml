@@ -1,0 +1,26 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  kafka:
+    listener:
+      auto-startup: false
+  cloud:
+    discovery:
+      enabled: false
+    eureka:
+      client:
+        enabled: false
+
+finova:
+  transactions:
+    reconciler:
+      enabled: false
+    outbox-interval-ms: 600000
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.hibernate: WARN
+    org.flywaydb: WARN
+    com.finova.transaction: INFO

@@ -1,0 +1,15 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+finova:
+  transactions:
+    reconciler:
+      enabled: true
+    reconcile-interval-ms: 15000
+    reconcile-threshold-seconds: 30
+
+logging:
+  level:
+    com.finova.transaction: DEBUG

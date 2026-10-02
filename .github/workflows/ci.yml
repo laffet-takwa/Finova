@@ -1,0 +1,263 @@
+# ======================================================================
+# FINOVA — CI
+#
+# Three independent gates:
+#   backend   compile + unit/slice tests, then Testcontainers integration
+#             tests against real PostgreSQL, MongoDB and Kafka
+#   frontend  strict typecheck, lint, production bundle
+#   images    the same Dockerfiles the README tells a reviewer to run
+#
+# Integration tests only run when the whole backend gate is green, because
+# they are the slow part and there is no point paying for them on a red build.
+# ======================================================================
+name: finova
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '17'
+  MAVEN_VERSION: '3.9.9'
+
+jobs:
+  backend:
+    name: Backend · compile & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_USER: finova
+          POSTGRES_PASSWORD: finova
+          POSTGRES_DB: finova_users
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U finova"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      mongodb:
+        image: mongo:7.0
+        ports: ['27017:27017']
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      kafka:
+        image: apache/kafka:3.8.0
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          CLUSTER_ID: finova-ci-cluster-01
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+        ports: ['9092:9092']
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Cache Maven artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('backend/**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Compile
+        working-directory: backend
+        run: mvn -B -q clean install -DskipTests
+
+      - name: Unit and slice tests
+        working-directory: backend
+        # Testcontainers is available here, so nothing is skipped: the
+        # disabledWithoutDocker gate cannot silently hide a broken migration.
+        env:
+          JWT_SECRET: ci-only-secret-key-at-least-32-bytes-long!!
+        run: mvn -B test
+
+      - name: Integration tests (Testcontainers)
+        working-directory: backend
+        env:
+          JWT_SECRET: ci-only-secret-key-at-least-32-bytes-long!!
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
+        run: |
+          mvn -B test \
+            -Dtest='*IntegrationTest,*RepositoryTest,*DeadlockTest,*MongoTest,*ConcurrencyTest' \
+            -DfailIfNoSpecifiedTests=false
+
+      - name: Package
+        working-directory: backend
+        run: mvn -B -q package -DskipTests
+
+      - name: Upload jars
+        uses: actions/upload-artifact@v4
+        with:
+          name: finova-jars
+          path: backend/*/target/*.jar
+          retention-days: 7
+          if-no-files-found: error
+
+  frontend:
+    name: Frontend · typecheck, lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci || npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build:only
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: finova-web
+          path: frontend/dist
+          retention-days: 7
+
+  images:
+    name: Docker · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [backend, frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/frontend/Dockerfile
+          push: false
+          load: true
+          tags: finova/frontend:ci
+          build-args: |
+            VITE_API_BASE_URL=/api
+            VITE_USE_MOCKS=false
+
+      - name: Build api-gateway image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/api-gateway/Dockerfile
+          push: false
+          load: true
+          tags: finova/api-gateway:ci
+
+      - name: Build microservice images
+        run: |
+          set -euo pipefail
+          for svc in discovery-server:8761 \
+                     user-service:8081 \
+                     account-service:8082 \
+                     transaction-service:8083 \
+                     fraud-service:8084 \
+                     notification-service:8085; do
+            module="${svc%%:*}"
+            port="${svc##*:}"
+            echo "::group::building ${module}"
+            docker build \
+              -f infrastructure/docker/service/Dockerfile \
+              --build-arg "MODULE=${module}" \
+              --build-arg "APP_PORT=${port}" \
+              -t "finova/${module}:ci" \
+              --load \
+              .
+            echo "::endgroup::"
+          done
+
+      - name: Validate compose and manifests
+        run: |
+          set -euo pipefail
+          docker compose config --quiet
+          for f in infrastructure/kubernetes/*.yaml \
+                   infrastructure/kubernetes/*/*.yaml; do
+            [ -e "$f" ] || continue
+            case "$f" in *.example.yaml) continue ;; esac
+            echo "checking ${f}"
+          done
+
+  compose-smoke:
+    name: Docker Compose · smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    needs: [backend, frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Runs the mock-mode frontend only: it proves the Dockerfile, the nginx
+      # config and the SPA fallback all work, without paying to boot eight
+      # JVMs in CI.
+      - name: Start the frontend in mock mode
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml -f docker-compose.mock.yml up -d frontend
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:5173/ >/dev/null 2>&1; then
+              echo "frontend is serving"
+              curl -fsS http://localhost:5173/ | grep -qi '<div id="app">' \
+                && echo "SPA root present" \
+                || { echo "SPA root missing"; exit 1; }
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "frontend did not come up"; docker compose logs frontend; exit 1

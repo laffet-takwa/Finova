@@ -1,0 +1,123 @@
+server:
+  port: ${SERVER_PORT:8084}
+  shutdown: graceful
+
+spring:
+  application:
+    name: fraud-service
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/finova_fraud}
+      auto-index-creation: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: fraud-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.finova.common.event.*,com.finova.*"
+        spring.json.value.default.type: com.finova.common.event.DomainEvent
+        spring.json.use.type.info.headers: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    listener:
+      ack-mode: record
+      missing-topics-fatal: false
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 2000
+            readTimeout: 5000
+      okhttp:
+        enabled: false
+    service-registry:
+      eureka:
+        client:
+          service-url:
+            defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+          instance:
+            prefer-ip-address: true
+        instance:
+          health-check-enabled: true
+          prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: Rule-based fraud detection, risk scoring and alert management for Finova.
+    version: 1.0.0
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{correlationId:-}]"
+
+finova:
+  jwt:
+    secret: ${JWT_SECRET:finova-local-development-secret-key-change-me-32bytes}
+    issuer: ${JWT_ISSUER:finova}
+    access-token-ttl-seconds: ${JWT_ACCESS_TTL:3600}
+    refresh-token-ttl-seconds: ${JWT_REFRESH_TTL:604800}
+  fraud:
+    # Points added for every rule that fires beyond the first: two independent signals agreeing is
+    # stronger evidence than their arithmetic sum. A large amount (55) plus an unusual pattern (25)
+    # therefore lands on 88/100 rather than 80.
+    corroboration-bonus: 8
+    large-amount:
+      tnd: 10000
+      eur: 2500
+      usd: 3000
+      score: 55
+    velocity:
+      max-transactions: 5
+      window-seconds: 60
+      medium-score: 30
+      high-score: 45
+      high-score-event-count: 10
+    unusual-pattern:
+      average-multiplier: 3
+      largest-multiplier: 2
+      zone-id: Africa/Tunis
+      unusual-hour-start: 0
+      unusual-hour-end: 5
+      score: 25
+    new-recipient:
+      lookback-days: 7
+      score: 10
+    round-amount:
+      minimum: 1000
+      multiple: 1000
+      score: 10
+    velocity-state:
+      history-size: 20
+      retention-days: 30
+      cleanup-cron: "0 17 * * * *"
+    outbox:
+      publish-interval-ms: 2000
+      batch-size: 50
+      send-timeout-ms: 5000
+      retention-days: 7

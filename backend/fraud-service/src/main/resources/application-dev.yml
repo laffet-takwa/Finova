@@ -1,0 +1,20 @@
+# Demo profile: seeds a realistic fraud backlog so the admin console has something to show.
+logging:
+  level:
+    com.finova.fraud: DEBUG
+    org.springframework.data.mongodb: INFO
+
+finova:
+  fraud:
+    velocity:
+      max-transactions: 5
+      window-seconds: 60
+
+eureka:
+  client:
+    enabled: false
+
+management:
+  health:
+    mongo:
+      enabled: true

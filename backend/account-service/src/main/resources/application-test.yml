@@ -1,0 +1,32 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  kafka:
+    listener:
+      auto-startup: false
+  cloud:
+    discovery:
+      enabled: false
+    service-registry:
+      eureka:
+        client:
+          enabled: false
+          register-with-eureka: false
+          fetch-registry: false
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+finova:
+  jwt:
+    secret: test-secret-key-for-account-service-tests-32b
+    issuer: finova-test
+logging:
+  level:
+    root: WARN
+    com.finova.account: INFO

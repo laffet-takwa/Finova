@@ -1,0 +1,97 @@
+server:
+  port: ${SERVER_PORT:8085}
+  shutdown: graceful
+
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:finova_notifications}
+    username: ${DB_USER:finova}
+    password: ${DB_PASSWORD:finova}
+  jpa:
+    hibernate.ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+        format_sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: finova-notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.finova.common.event.*,com.finova.*"
+        spring.json.value.default.type: com.finova.common.event.DomainEvent
+        # The payload generic is resolved by the consumer itself with an explicit
+        # TypeReference, so the type headers are ignored: one trusted default type
+        # for every record and no surprise mapping.
+        spring.json.use.type.headers: false
+        spring.json.value.default.type.nullable: true
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    listener:
+      ack-mode: record
+      missing-topics-fatal: false
+  cloud:
+    service-registry:
+      eureka:
+        client:
+          service-url:
+            defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+          instance:
+            prefer-ip-address: true
+        instance:
+          health-check-enabled: true
+          prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: Finova Notification Service - event-driven user inbox, unread badge and delivery preferences
+    version: 1.0.0
+
+finova:
+  jwt:
+    secret: ${JWT_SECRET:finova-local-development-secret-key-change-me-32bytes}
+    issuer: ${JWT_ISSUER:finova}
+    access-token-ttl-seconds: ${JWT_ACCESS_TTL:3600}
+    refresh-token-ttl-seconds: ${JWT_REFRESH_TTL:604800}
+  notifications:
+    # Outbox drain cadence and the per-row send timeout.
+    outbox-interval-ms: ${OUTBOX_INTERVAL_MS:2000}
+    outbox-send-timeout-ms: ${OUTBOX_SEND_TIMEOUT_MS:3000}
+    # Read notifications older than this are purged nightly; unread ones are never touched.
+    retention-days: ${RETENTION_DAYS:90}
+    retention-cron: "0 30 3 * * *"
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{correlationId:-}]"

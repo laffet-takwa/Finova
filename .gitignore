@@ -1,0 +1,58 @@
+# ---- Java / Maven ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+*.log
+.mvn/timing.properties
+.flattened-pom.xml
+
+# ---- Node / Frontend ----
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+coverage/
+*.tsbuildinfo
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+!.vscode/extensions.json
+.settings/
+.project
+.classpath
+nbproject/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ---- Local runtime / secrets ----
+.env
+.env.local
+*.env.local
+k8s/secrets/*-secret.yaml
+!k8s/secrets/*.example.yaml
+infrastructure/kubernetes/secrets/secret*.yaml
+!infrastructure/kubernetes/secrets/*.example.yaml
+*.pem
+*.key
+!src/**/*.key
+
+# ---- Test / reports ----
+surefire-reports/
+/reports/
+jacoco.exec
+*.lcov

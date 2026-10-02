@@ -1,0 +1,21 @@
+spring:
+  cloud:
+    netflix:
+      eureka:
+        server:
+          # Local development: a single registry node, verbose dashboard
+          # response so the log is readable when bringing the stack up.
+          enable-self-preservation: true
+          response-cache-update-interval-ms: 1000
+
+management:
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+
+logging:
+  level:
+    com.netflix.eureka: INFO
+    com.netflix.discovery: INFO
+    com.finova.discovery: INFO

@@ -1,0 +1,393 @@
+# ======================================================================
+# FINOVA — Digital Banking & Smart Transaction Platform
+# Local development stack.
+#
+#   docker compose up --build
+#
+# Brings up: Vue SPA, API gateway, Eureka, five microservices, PostgreSQL,
+# MongoDB, Kafka (KRaft, no ZooKeeper) and the ELK observability stack.
+#
+# Copy .env.example to .env first to override any default.
+# Every service is independently health-checked and started in order.
+# ======================================================================
+name: finova
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  networks: [finova]
+  environment: &service-env
+    SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+    JWT_SECRET: ${JWT_SECRET:-finova-local-development-secret-key-change-me-32bytes}
+    JWT_ISSUER: ${JWT_ISSUER:-finova}
+    JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-3600}
+    JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
+    EUREKA_URL: ${EUREKA_URL:-http://discovery-server:8761/eureka/}
+    KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+    DB_HOST: ${DB_HOST:-postgres}
+    DB_PORT: ${DB_PORT:-5432}
+    DB_USER: ${DB_USER:-finova}
+    DB_PASSWORD: ${DB_PASSWORD:-finova}
+    MONGODB_URI: ${MONGODB_URI:-mongodb://finova:finova@mongodb:27017/finova_fraud?authSource=admin}
+    ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://logstash:5000}
+    LOGGING_LEVEL_ROOT: ${LOGGING_LEVEL_ROOT:-INFO}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+    tag: "{{.Name}}"
+
+services:
+  # ------------------------------------------------------------------
+  # Infrastructure
+  # ------------------------------------------------------------------
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: finova-postgres
+    restart: unless-stopped
+    networks: [finova]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-finova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finova}
+      POSTGRES_DB: ${POSTGRES_DB:-finova_users}
+      # Each service owns its own schema boundary; one instance, four databases.
+      POSTGRES_MULTIPLE_DATABASES: finova_users,finova_accounts,finova_transactions,finova_notifications
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-create-databases.sh:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finova} -d ${POSTGRES_DB:-finova_users}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *logging
+
+  mongodb:
+    image: mongo:7.0
+    container_name: finova-mongodb
+    restart: unless-stopped
+    networks: [finova]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-finova}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-finova}
+      MONGO_INITDB_DATABASE: finova_fraud
+    volumes:
+      - mongodb-data:/data/db
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *logging
+
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: finova-kafka
+    restart: unless-stopped
+    networks: [finova]
+    environment:
+      KAFKA_NODE_ID: ${KAFKA_NODE_ID:-1}
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      CLUSTER_ID: ${CLUSTER_ID:-finova-local-cluster-01}
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx1g
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+      - "${KAFKA_EXTERNAL_PORT:-29092}:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    logging: *logging
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    container_name: finova-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [finova]
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        cp /scripts/create-topics.sh /tmp/create-topics.sh
+        chmod +x /tmp/create-topics.sh
+        KAFKA_BOOTSTRAP=kafka:9092 bash /tmp/create-topics.sh
+        echo "[finova-kafka-init] topics ready"
+    volumes:
+      - ./infrastructure/kafka/create-topics.sh:/scripts/create-topics.sh:ro
+    restart: "no"
+    logging: *logging
+
+  # ------------------------------------------------------------------
+  # Service discovery
+  # ------------------------------------------------------------------
+  discovery-server:
+    <<: *service-defaults
+    container_name: finova-discovery
+    build:
+      context: .
+      dockerfile: infrastructure/docker/service/Dockerfile
+      args:
+        MODULE: discovery-server
+        APP_PORT: 8761
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8761
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    logging: *logging
+
+  # ------------------------------------------------------------------
+  # Microservices
+  # ------------------------------------------------------------------
+  user-service:
+    <<: *service-defaults
+    container_name: finova-user-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    build:
+      context: .
+      dockerfile: infrastructure/docker/service/Dockerfile
+      args:
+        MODULE: user-service
+        APP_PORT: 8081
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8081
+      DB_NAME: ${DB_NAME:-finova_users}
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 75s
+    logging: *logging
+
+  account-service:
+    <<: *service-defaults
+    container_name: finova-account-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    build:
+      context: .
+      dockerfile: infrastructure/docker/service/Dockerfile
+      args:
+        MODULE: account-service
+        APP_PORT: 8082
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8082
+      DB_NAME: ${ACCOUNT_DB_NAME:-finova_accounts}
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 75s
+    logging: *logging
+
+  transaction-service:
+    <<: *service-defaults
+    container_name: finova-transaction-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    build:
+      context: .
+      dockerfile: infrastructure/docker/service/Dockerfile
+      args:
+        MODULE: transaction-service
+        APP_PORT: 8083
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8083
+      DB_NAME: ${TRANSACTION_DB_NAME:-finova_transactions}
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 75s
+    logging: *logging
+
+  fraud-service:
+    <<: *service-defaults
+    container_name: finova-fraud-service
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    build:
+      context: .
+      dockerfile: infrastructure/docker/service/Dockerfile
+      args:
+        MODULE: fraud-service
+        APP_PORT: 8084
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8084
+    ports:
+      - "8084:8084"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 75s
+    logging: *logging
+
+  notification-service:
+    <<: *service-defaults
+    container_name: finova-notification-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    build:
+      context: .
+      dockerfile: infrastructure/docker/service/Dockerfile
+      args:
+        MODULE: notification-service
+        APP_PORT: 8085
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8085
+      DB_NAME: ${NOTIFICATION_DB_NAME:-finova_notifications}
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8085/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 75s
+    logging: *logging
+
+  # ------------------------------------------------------------------
+  # Edge
+  # ------------------------------------------------------------------
+  api-gateway:
+    <<: *service-defaults
+    container_name: finova-api-gateway
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+      transaction-service:
+        condition: service_healthy
+      fraud-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api-gateway/Dockerfile
+    environment:
+      <<: *service-env
+      SERVER_PORT: 8080
+      EUREKA_URL: ${EUREKA_URL:-http://discovery-server:8761/eureka/}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:8080}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging: *logging
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_USE_MOCKS: "false"
+    container_name: finova-frontend
+    restart: unless-stopped
+    networks: [finova]
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging: *logging
+
+volumes:
+  postgres-data:
+  mongodb-data:
+  kafka-data:
+
+networks:
+  finova:
+    driver: bridge

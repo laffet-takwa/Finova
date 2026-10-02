@@ -1,0 +1,29 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/finova_fraud_test}
+      auto-index-creation: true
+  kafka:
+    listener:
+      auto-startup: false
+  cloud:
+    service-registry:
+      eureka:
+        enabled: false
+
+finova:
+  jwt:
+    secret: ${JWT_SECRET:finova-test-secret-key-for-slice-tests-32bytes}
+    issuer: finova
+
+eureka:
+  client:
+    enabled: false
+
+logging:
+  level:
+    root: WARN
+    com.finova.fraud: INFO

@@ -1,0 +1,13 @@
+http.host: "0.0.0.0"
+pipeline.workers: 2
+pipeline.ordered: true
+
+queue.type: persisted
+queue.max_bytes: 1gb
+
+# Finova ships structured single-line logs; JSON lines parsing happens in the
+# pipeline filter so a malformed line degrades one document instead of killing
+# the whole stream.
+input.codec: json_lines
+
+path.config: /usr/share/logstash/pipeline

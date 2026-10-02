@@ -1,0 +1,108 @@
+# ======================================================================
+# FINOVA — ingress
+#
+# Only the frontend and the gateway are exposed. Microservices are
+# ClusterIP-only: reaching one directly would bypass the gateway's JWT
+# validation, rate limiting and audit logging, so there is deliberately no
+# Ingress rule for them.
+# ======================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: finova-ingress
+  namespace: finova
+  labels:
+    app.kubernetes.io/part-of: finova
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.ingress.kubernetes.io/enable-cors: "false"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - finova.example.com
+      secretName: finova-tls
+  rules:
+    - host: finova.example.com
+      http:
+        paths:
+          # Aggregated OpenAPI document served by the gateway.
+          - path: /v3/api-docs
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+          - path: /swagger-ui
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+          # Actuator is not public in a real cluster; exposed here only so the
+          # platform's own monitoring can reach it. Restrict with
+          # nginx.ingress.kubernetes.io/server-snippet or a separate internal
+          # Ingress before exposing this publicly.
+          - path: /actuator
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+          # The whole REST surface.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+          # The SPA. `frontend` proxies /api itself, so the browser only ever
+          # sees one origin and CORS is never needed in production.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: finova-metrics-ingress
+  namespace: finova
+  labels:
+    app.kubernetes.io/part-of: finova
+  annotations:
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: finova/monitoring-credentials
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: metrics.finova.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080

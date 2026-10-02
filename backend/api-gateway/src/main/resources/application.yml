@@ -1,0 +1,167 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+spring:
+  application:
+    name: api-gateway
+  main:
+    web-application-type: reactive
+  autoconfigure:
+    # Redis is declared as an optional dependency for a future distributed
+    # rate limiter. Rate limiting is in-memory, so the gateway must start and
+    # run with no Redis available.
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
+      # The gateway has no user store: callers are authenticated by JWT, so the
+      # generated default password and its user would only be misleading.
+      - org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration
+  cloud:
+    gateway:
+      # Explicit routes only: no automatic /SERVICE-ID/** route is generated.
+      discovery:
+        locator:
+          enabled: false
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 15s
+      loadbalancer:
+        # A missing service instance is a 503 the caller may retry, not a 404.
+        use404: false
+      routes:
+        - id: user-service-auth
+          uri: lb://user-service
+          predicates:
+            - Path=/api/auth/**
+        - id: user-service-users
+          uri: lb://user-service
+          predicates:
+            - Path=/api/users/**
+        - id: account-service-accounts
+          uri: lb://account-service
+          predicates:
+            - Path=/api/accounts/**
+        - id: transaction-service-transactions
+          uri: lb://transaction-service
+          predicates:
+            - Path=/api/transactions/**
+        - id: fraud-service-fraud
+          uri: lb://fraud-service
+          predicates:
+            - Path=/api/fraud/**
+        - id: notification-service-notifications
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/notifications/**
+        # Per service OpenAPI / Swagger UI proxied from this host, so the SPA and
+        # the API consumers always read the docs of the running service.
+        - id: docs-user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/docs/user-service/**
+          filters:
+            - StripPrefix=2
+        - id: docs-account-service
+          uri: lb://account-service
+          predicates:
+            - Path=/docs/account-service/**
+          filters:
+            - StripPrefix=2
+        - id: docs-transaction-service
+          uri: lb://transaction-service
+          predicates:
+            - Path=/docs/transaction-service/**
+          filters:
+            - StripPrefix=2
+        - id: docs-fraud-service
+          uri: lb://fraud-service
+          predicates:
+            - Path=/docs/fraud-service/**
+          filters:
+            - StripPrefix=2
+        - id: docs-notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/docs/notification-service/**
+          filters:
+            - StripPrefix=2
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+    instance-id: ${spring.application.name}:${server.port}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: Finova API Gateway - routing, JWT validation, CORS and rate limiting
+    version: 1.0.0
+
+finova:
+  jwt:
+    secret: ${JWT_SECRET:finova-local-development-secret-key-change-me-32bytes}
+    issuer: ${JWT_ISSUER:finova}
+    access-token-ttl-seconds: ${JWT_ACCESS_TTL:3600}
+    refresh-token-ttl-seconds: ${JWT_REFRESH_TTL:604800}
+  gateway:
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173}
+    admin-paths: ${GATEWAY_ADMIN_PATHS:/api/fraud,/api/users/admin}
+    admin-required-on-admin-segments: true
+    public-paths:
+      - /api/auth/register
+      - /api/auth/login
+      - /api/auth/refresh
+      - /actuator/**
+      - /v3/api-docs/**
+      - /swagger-ui/**
+      - /swagger-ui.html
+      - /webjars/**
+      - /docs/**
+    rate-limit:
+      enabled: true
+      capacity: ${GATEWAY_RATE_LIMIT_CAPACITY:120}
+      window-seconds: ${GATEWAY_RATE_LIMIT_WINDOW:60}
+      auth-capacity: ${GATEWAY_AUTH_RATE_LIMIT:10}
+      auth-paths:
+        - /api/auth/login
+      cleanup-interval-seconds: 60
+
+springdoc:
+  api-docs:
+    # /v3/api-docs is owned by GatewayDocumentationController and serves the
+    # aggregated platform document; springdoc's own machine document is nested
+    # one level deeper so the two cannot collide.
+    path: /v3/api-docs/internal
+  swagger-ui:
+    path: /swagger-ui.html
+    url: /v3/api-docs
+    config-url: /v3/api-docs/internal/swagger-config
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{correlationId:-}]"

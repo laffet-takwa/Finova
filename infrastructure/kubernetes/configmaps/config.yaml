@@ -1,0 +1,81 @@
+# ======================================================================
+# FINOVA — configuration
+#
+# Everything non-sensitive lives here so it is reviewable in git and
+# auditable in a diff. Secrets live in secrets/ (or, in a real cluster,
+# in External Secrets backed by a vault) and never in a ConfigMap.
+# ======================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finova-common-config
+  namespace: finova
+  labels:
+    app.kubernetes.io/part-of: finova
+data:
+  SPRING_PROFILES_ACTIVE: "prod"
+
+  # Service discovery
+  EUREKA_URL: "http://discovery-server:8761/eureka/"
+
+  # Event streaming
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-bootstrap:9092"
+
+  # Data stores
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_USER: "finova"
+  MONGODB_URI: "mongodb://mongodb:27017/finova_fraud"
+
+  # JWT
+  JWT_ISSUER: "finova"
+  JWT_ACCESS_TTL: "3600"
+  JWT_REFRESH_TTL: "604800"
+
+  # Edge
+  ALLOWED_ORIGINS: "https://finova.example.com"
+  LOGGING_LEVEL_ROOT: "INFO"
+---
+# Per-service database names: bounded context per database.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finova-databases
+  namespace: finova
+  labels:
+    app.kubernetes.io/part-of: finova
+data:
+  USER_DB_NAME: "finova_users"
+  ACCOUNT_DB_NAME: "finova_accounts"
+  TRANSACTION_DB_NAME: "finova_transactions"
+  NOTIFICATION_DB_NAME: "finova_notifications"
+  POSTGRES_DB: "finova_users"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finova-gateway-config
+  namespace: finova
+  labels:
+    app.kubernetes.io/part-of: finova
+    app.kubernetes.io/name: api-gateway
+data:
+  SERVER_PORT: "8080"
+  finova.gateway.allowed-origins: "https://finova.example.com"
+  finova.gateway.rate-limit.capacity: "120"
+  finova.gateway.rate-limit.window-seconds: "60"
+  finova.gateway.rate-limit.auth-capacity: "10"
+  finova.gateway.admin-paths: "/api/fraud,/api/users/admin"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finova-frontend-config
+  namespace: finova
+  labels:
+    app.kubernetes.io/part-of: finova
+    app.kubernetes.io/name: frontend
+data:
+  VITE_API_BASE_URL: "/api"
+  VITE_USE_MOCKS: "false"
+  VITE_APP_NAME: "Finova"

@@ -1,0 +1,28 @@
+spring:
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 30s
+
+finova:
+  gateway:
+    # The Vite dev server; add the deployed SPA origin here when it is known.
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+    rate-limit:
+      # Generous in local development so a page reload never trips the limiter.
+      capacity: 600
+      window-seconds: 60
+      auth-capacity: 20
+
+management:
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+
+logging:
+  level:
+    com.finova.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.cloud.gateway.route: INFO

@@ -1,0 +1,281 @@
+# ======================================================================
+# FINOVA — stateful backing services
+#
+# In production these would be managed (RDS / DocumentDB / MSK / a real
+# Kafka operator) and these manifests replaced. They exist so the platform
+# is runnable and self-contained end to end, which is what makes the demo
+# reproducible.
+#
+# One StatefulSet per bounded context: each service owns its own database,
+# which is what allows it to be deployed and scaled independently.
+# ======================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: finova
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: finova
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: finova
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: finova
+    app.kubernetes.io/component: database
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/part-of: finova
+    spec:
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:16.4-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef: { name: finova-common-config, key: DB_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: finova-secrets, key: DB_PASSWORD }
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef: { name: finova-databases, key: POSTGRES_DB }
+            - name: POSTGRES_MULTIPLE_DATABASES
+              value: "finova_users,finova_accounts,finova_transactions,finova_notifications"
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 2Gi }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "finova"] }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", "finova"] }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+      volumes:
+        - name: init
+          configMap:
+            name: finova-postgres-init
+            defaultMode: 0555
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: finova
+  labels:
+    app.kubernetes.io/name: mongodb
+    app.kubernetes.io/part-of: finova
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mongodb
+  ports:
+    - name: mongodb
+      port: 27017
+      targetPort: mongodb
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: finova
+  labels:
+    app.kubernetes.io/name: mongodb
+    app.kubernetes.io/part-of: finova
+    app.kubernetes.io/component: database
+spec:
+  serviceName: mongodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mongodb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mongodb
+        app.kubernetes.io/part-of: finova
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: mongodb
+          image: mongo:7.0
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: finova
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: finova-secrets, key: MONGODB_ROOT_PASSWORD }
+            - name: MONGO_INITDB_DATABASE
+              value: finova_fraud
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 2Gi }
+          readinessProbe:
+            exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
+            initialDelaySeconds: 25
+            periodSeconds: 10
+          livenessProbe:
+            exec: { command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"] }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-bootstrap
+  namespace: finova
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: finova
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kafka
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: kafka
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: finova
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: finova
+    app.kubernetes.io/component: messaging
+spec:
+  serviceName: kafka-bootstrap
+  # A single KRaft node. Production runs a 3-broker cluster with a dedicated
+  # controller quorum; the topic contract does not change.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka
+        app.kubernetes.io/part-of: finova
+    spec:
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: kafka
+          image: apache/kafka:3.8.0
+          ports:
+            - name: kafka
+              containerPort: 9092
+          env:
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: broker,controller
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: 1@kafka-0.kafka-bootstrap.finova.svc.cluster.local:9093
+            - name: KAFKA_LISTENERS
+              value: PLAINTEXT://:9092,CONTROLLER://:9093
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: PLAINTEXT://kafka-bootstrap:9092
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: PLAINTEXT
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: CONTROLLER
+            - name: CLUSTER_ID
+              value: finova-prod-cluster-01
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            # Explicit provisioning only: a typo must fail loudly, not create
+            # an empty topic nobody consumes.
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "false"
+            - name: KAFKA_LOG_DIRS
+              value: /var/lib/kafka/data
+            - name: KAFKA_HEAP_OPTS
+              value: -Xms1g -Xmx1g
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kafka/data
+          resources:
+            requests: { cpu: 500m, memory: 1536Mi }
+            limits: { cpu: "2", memory: 3Gi }
+          readinessProbe:
+            tcpSocket: { port: kafka }
+            initialDelaySeconds: 40
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: kafka }
+            initialDelaySeconds: 90
+            periodSeconds: 20
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi

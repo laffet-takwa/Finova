@@ -1,0 +1,17 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    show-sql: false
+finova:
+  clients:
+    user-service-url: ${USER_SERVICE_URL:http://localhost:8081}
+eureka:
+  instance:
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 10
+logging:
+  level:
+    com.finova.account: DEBUG
+    org.hibernate.SQL: WARN

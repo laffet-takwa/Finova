@@ -1,0 +1,50 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:postgresql://localhost:5432/finova_notifications_test
+    username: finova
+    password: finova
+  jpa:
+    hibernate.ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  kafka:
+    # No broker is available in a build, so the listener containers must not try
+    # to connect or the context would sit retrying for the whole test run.
+    listener:
+      auto-startup: false
+  cloud:
+    service-registry:
+      eureka:
+        enabled: false
+        client:
+          enabled: false
+          register-with-eureka: false
+          fetch-registry: false
+
+management:
+  health:
+    kafka:
+      enabled: false
+
+finova:
+  jwt:
+    secret: finova-test-secret-key-that-is-long-enough-32b
+    issuer: finova
+  notifications:
+    # Pushed out of the way of the test run: neither job should fire on its own
+    # while a test is asserting on the database.
+    outbox-interval-ms: 3600000
+    outbox-send-timeout-ms: 1000
+    retention-days: 30
+    retention-cron: "0 0 0 1 1 ?"
+
+logging:
+  level:
+    com.finova.notification: INFO
+    org.springframework.kafka: ERROR
+    org.hibernate: WARN
