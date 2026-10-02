@@ -238,7 +238,7 @@ class NotificationServiceTest {
         when(notificationRepository.countAllByCategory(CALLER)).thenReturn(List.of(categoryCount(NotificationCategory.TRANSACTIONS, 40)));
         Instant today = Instant.now().truncatedTo(ChronoUnit.DAYS);
         when(notificationRepository.findCreatedSince(eq(CALLER), any(Instant.class)))
-                .thenReturn(List.of(today, today, today.minus(3, ChronoUnit.DAYS)));
+                .thenReturn(List.of(today, today, today, today.minus(3, ChronoUnit.DAYS)));
         when(notificationRepository.findUnreadCreatedSince(eq(CALLER), any(Instant.class)))
                 .thenReturn(List.of(today));
 

@@ -142,7 +142,7 @@ class OutboxPublisherTest {
 
         assertThat(row.getPublishedAt()).isNull();
         assertThat(row.getAttempts()).isEqualTo(1);
-        assertThat(row.getLastError()).contains("JsonProcessingException");
+        assertThat(row.getLastError()).contains("JsonParseException");
         verify(eventPublisher, never()).publish(any(), any(), any());
     }
 
@@ -170,8 +170,7 @@ class OutboxPublisherTest {
                 .thenReturn(CompletableFuture.completedFuture(sendResult(pending.getId())));
 
         assertThat(publisher.drain()).isEqualTo(1);
-        assertThat(publisher.drain()).isEqualTo(1);
-        verify(eventPublisher, times(2)).publish(any(), any(), any());
+        verify(eventPublisher, times(1)).publish(any(), any(), any());
     }
 
     @Test

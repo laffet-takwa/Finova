@@ -1,14 +1,18 @@
 package com.finova.notification.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finova.common.domain.Currency;
 import com.finova.common.domain.NotificationType;
 import com.finova.common.error.BusinessException;
 import com.finova.common.error.ErrorCode;
 import com.finova.common.security.AuthenticatedUser;
 import com.finova.common.web.PageResponse;
 import com.finova.notification.config.SecurityConfig;
+import com.finova.notification.config.WebSupportConfig;
 import com.finova.notification.domain.NotificationCategory;
 import com.finova.notification.domain.NotificationSeverity;
+import com.finova.notification.dto.AdminNotificationResponse;
 import com.finova.notification.dto.MarkAllReadResponse;
 import com.finova.notification.dto.NotificationFilters;
 import com.finova.notification.dto.NotificationResponse;
@@ -30,10 +34,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -48,7 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * that a caller cannot reach another customer's notification.
  */
 @WebMvcTest(controllers = {NotificationController.class, NotificationAdminController.class})
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, WebSupportConfig.class})
 class NotificationControllerTest {
 
     private static final String CALLER = "demo-takwa";
@@ -164,17 +168,107 @@ class NotificationControllerTest {
         verify(notificationService, never()).adminFeed(any(), any());
     }
 
-    @Test
+@Test
     @DisplayName("An admin token reaches the platform feed")
     void shouldAllowAdminOnAdminFeed() throws Exception {
         when(notificationService.adminFeed(any(), any(NotificationFilters.class)))
-                .thenReturn(emptyPage());
+                .thenReturn(emptyAdminPage());
 
         mockMvc.perform(get("/api/notifications/admin/feed").with(admin("demo-admin")))
                 .andExpect(status().isOk());
     }
 
+    @Test
+    @DisplayName("The admin feed names the owner and masks it in a display hint")
+    void shouldExposeTheOwnerAndMaskedHintOnTheAdminFeed() throws Exception {
+        when(notificationService.adminFeed(any(), any(NotificationFilters.class)))
+                .thenReturn(new PageResponse<>(List.of(
+                        adminNotification("n1", "3f6d9a1c-4b7e-4f0a-9c2d-8e5f1a2b3c4d"),
+                        adminNotification("n2", "b21f77aa-90c3-4e51-8a77-1c0e5d3b9a20")),
+                        0, 20, 2, 2, true, true));
+
+        mockMvc.perform(get("/api/notifications/admin/feed").with(admin("demo-admin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].id").value("n1"))
+                .andExpect(jsonPath("$.content[0].userId")
+                        .value("3f6d9a1c-4b7e-4f0a-9c2d-8e5f1a2b3c4d"))
+                .andExpect(jsonPath("$.content[0].userDisplayHint").value("3f6d9a1c…"))
+                .andExpect(jsonPath("$.content[0].type").value("TRANSFER_COMPLETED"))
+                .andExpect(jsonPath("$.content[0].category").value("TRANSACTIONS"))
+                .andExpect(jsonPath("$.content[0].severity").value("SUCCESS"))
+                .andExpect(jsonPath("$.content[0].currency").value("TND"))
+                .andExpect(jsonPath("$.content[0].correlationId").value("corr-n1"))
+                .andExpect(jsonPath("$.content[1].userId")
+                        .value("b21f77aa-90c3-4e51-8a77-1c0e5d3b9a20"))
+                .andExpect(jsonPath("$.content[1].userDisplayHint").value("b21f77aa…"));
+    }
+
+    @Test
+    @DisplayName("The admin feed still refuses a customer token now that it names the owner")
+    void shouldForbidCustomerOnAdminFeedWithOwnerBearingRows() throws Exception {
+        when(notificationService.adminFeed(any(), any(NotificationFilters.class)))
+                .thenReturn(new PageResponse<>(List.of(
+                        adminNotification("n1", "3f6d9a1c-4b7e-4f0a-9c2d-8e5f1a2b3c4d")),
+                        0, 20, 1, 1, true, true));
+
+        mockMvc.perform(get("/api/notifications/admin/feed").with(customer(CALLER)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+        verify(notificationService, never()).adminFeed(any(), any());
+    }
+
+    @Test
+    @DisplayName("No customer-facing response ever carries an owner field")
+    void shouldNeverExposeOwnerFieldsOnCustomerResponses() throws Exception {
+        when(notificationService.list(eq(CALLER), any(NotificationFilters.class)))
+                .thenReturn(new PageResponse<>(List.of(notification("n1")), 0, 20, 1, 1, true, true));
+        when(notificationService.unread(CALLER, 20)).thenReturn(List.of(notification("n1")));
+        when(notificationService.get(CALLER, "n1")).thenReturn(notification("n1"));
+        when(notificationService.markRead(CALLER, "n1")).thenReturn(notification("n1"));
+        when(notificationService.stats(CALLER)).thenReturn(
+                new com.finova.notification.dto.NotificationStatsResponse(1, 0,
+                        Map.of("TRANSFER_COMPLETED", 1L), Map.of("TRANSACTIONS", 1L),
+                        List.of(), List.of()));
+
+        List<String> bodies = List.of(
+                mockMvc.perform(get("/api/notifications").with(customer(CALLER)))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(),
+                mockMvc.perform(get("/api/notifications/unread").with(customer(CALLER)))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(),
+                mockMvc.perform(get("/api/notifications/n1").with(customer(CALLER)))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(),
+                mockMvc.perform(patch("/api/notifications/n1/read").with(customer(CALLER)))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+
+        for (String body : bodies) {
+            JsonNode json = objectMapper.readTree(body);
+            assertThat(json.toString()).doesNotContain("userId");
+            assertThat(json.toString()).doesNotContain("userDisplayHint");
+            assertThat(json.toString()).doesNotContain("correlationId");
+        }
+    }
+
+    @Test
+    @DisplayName("The customer inbox response exposes exactly the contracted key set")
+    void shouldExposeTheContractedKeySetOnCustomerResponses() throws Exception {
+        when(notificationService.unread(CALLER, 20)).thenReturn(List.of(notification("n1")));
+
+        String body = mockMvc.perform(get("/api/notifications/unread").with(customer(CALLER)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(objectMapper.readTree(body).get(0).fieldNames()).toIterable()
+                .containsExactlyInAnyOrder("id", "type", "category", "severity", "title", "message",
+                        "transactionId", "reference", "amount", "currency", "read", "readAt", "createdAt");
+    }
+
     private PageResponse<NotificationResponse> emptyPage() {
+        return new PageResponse<>(List.of(), 0, 20, 0, 0, true, true);
+    }
+
+    private PageResponse<AdminNotificationResponse> emptyAdminPage() {
         return new PageResponse<>(List.of(), 0, 20, 0, 0, true, true);
     }
 
@@ -187,7 +281,16 @@ class NotificationControllerTest {
                 true, Instant.now(), Instant.now());
     }
 
-private static RequestPostProcessor customer(String userId) {
+    private AdminNotificationResponse adminNotification(String id, String userId) {
+        return new AdminNotificationResponse(id, userId, userId.substring(0, 8) + "…",
+                NotificationType.TRANSFER_COMPLETED, NotificationCategory.TRANSACTIONS,
+                NotificationSeverity.SUCCESS, "Transfer completed",
+                "Your transfer of 250.000 TND to account •••• 4321 was successful.",
+                "tx-" + id, "TX-20261001-00001", new BigDecimal("250.000"), Currency.TND,
+                false, null, Instant.now(), "corr-" + id);
+    }
+
+    private static RequestPostProcessor customer(String userId) {
         return authenticated(userId, "CUSTOMER");
     }
 

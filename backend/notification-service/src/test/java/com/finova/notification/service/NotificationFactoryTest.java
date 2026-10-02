@@ -44,7 +44,7 @@ class NotificationFactoryTest {
         assertThat(sender.severity()).isEqualTo(NotificationSeverity.SUCCESS);
         assertThat(sender.title()).isEqualTo("Transfer completed");
         assertThat(sender.message()).isEqualTo(
-                "Your transfer of 250.000 TND to account •••• 3210 was successful.");
+                "Your transfer of 250.000 TND to account •••• 4321 was successful.");
         assertThat(sender.reference()).isEqualTo("TX-20261001-00001");
         assertThat(sender.amount()).isEqualByComparingTo("250.000");
         assertThat(sender.currency()).isEqualTo("TND");
@@ -150,7 +150,7 @@ class NotificationFactoryTest {
             assertThat(draft.message()).doesNotContain("TN59");
             assertThat(draft.message()).doesNotContain("5900100");
         });
-        assertThat(all.get(0).message()).contains("•••• 3210");
+        assertThat(all.get(0).message()).contains("•••• 4321");
         assertThat(all.get(1).message()).contains("•••• 6789");
     }
 

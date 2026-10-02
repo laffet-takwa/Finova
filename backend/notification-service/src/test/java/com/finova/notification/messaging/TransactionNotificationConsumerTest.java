@@ -1,6 +1,9 @@
 package com.finova.notification.messaging;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.finova.common.domain.NotificationType;
 import com.finova.common.event.DomainEvent;
 import com.finova.common.event.Topics;
@@ -58,7 +61,17 @@ class TransactionNotificationConsumerTest {
     @Mock
     private OutboxEventRepository outboxEventRepository;
 
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    /**
+     * Mirrors the mapper Spring Boot injects in production: the Java time module and,
+     * importantly, {@code FAIL_ON_UNKNOWN_PROPERTIES} off. That last one is load
+     * bearing: {@code TransactionEvent.isFlagged()} is a public helper method, so
+     * Jackson serialises it as an extra {@code flagged} field, which the round trip
+     * then has to tolerate.
+     */
+    private final ObjectMapper objectMapper = JsonMapper.builder()
+            .addModule(new JavaTimeModule())
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .build();
     private TransactionNotificationConsumer consumer;
 
     /** Stands in for the partial unique index on {@code source_event_id}. */
