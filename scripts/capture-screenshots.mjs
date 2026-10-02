@@ -220,33 +220,53 @@ async function signIn(page, role) {
   // Must happen on the SAME page as the screenshots: `browser.newPage()`
   // creates a page in the browser's default context, which has its own
   // localStorage, so the session would not be visible to the captured page.
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle2' })
-  await sleep(800)
-
   const { email, password } = role === 'admin' ? ADMIN : CUSTOMER
-  await page.evaluate(
-    (mail, pass) => {
-      const setNative = (input, next) => {
-        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
-        setter.call(input, next)
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-      }
-      const inputs = [...document.querySelectorAll('input[type="email"], input[type="password"]')]
-      if (inputs[0]) setNative(inputs[0], mail)
-      if (inputs[1]) setNative(inputs[1], pass)
-    },
-    email,
-    password,
-  )
-  await sleep(400)
-  await clickByText(page, 'Sign In')
-  await sleep(1800)
 
-  const landed = page.url().replace(BASE, '')
-  if (landed.includes('/login')) {
-    throw new Error(`sign-in failed for ${role}: still on ${landed}`)
+  const attempts = 3
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await page.goto(`${BASE}/login`, { waitUntil: 'networkidle2' })
+    // The dev server compiles routes on first request, so the first load of a
+    // session can be slow enough that the app has not mounted yet.
+    await page.waitForSelector('input[type="password"]', { timeout: 20000 })
+    await sleep(400)
+
+    await page.evaluate(
+      (mail, pass) => {
+        const setNative = (input, next) => {
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+          setter.call(input, next)
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+        }
+        const inputs = [...document.querySelectorAll('input[type="email"], input[type="password"]')]
+        if (inputs[0]) setNative(inputs[0], mail)
+        if (inputs[1]) setNative(inputs[1], pass)
+      },
+      email,
+      password,
+    )
+    await sleep(300)
+    await clickByText(page, 'Sign In')
+    await sleep(2500)
+
+    const landed = page.url().replace(BASE, '')
+    if (!landed.includes('/login')) {
+      console.log(`  · signed in as ${role} -> ${landed}`)
+      return
+    }
+
+    // Surface whatever the page is actually saying instead of failing blind.
+    const diagnostic = await page.evaluate(() => ({
+      alert: document.querySelector('[role="alert"]')?.textContent?.trim().slice(0, 160) ?? null,
+      emailValue: document.querySelector('input[type="email"]')?.value ?? null,
+      hasButton: [...document.querySelectorAll('button')].some((b) =>
+        (b.textContent ?? '').includes('Sign In'),
+      ),
+    }))
+    console.log(`  · sign-in attempt ${attempt}/${attempts} failed (${landed}) ${JSON.stringify(diagnostic)}`)
+    await sleep(1500)
   }
-  console.log(`  · signed in as ${role} -> ${landed}`)
+
+  throw new Error(`sign-in failed for ${role} after ${attempts} attempts`)
 }
 
 mkdirSync(OUT, { recursive: true })
