@@ -271,15 +271,18 @@ class UserProfileServiceTest {
             assertThat(point.label()).matches("\\d{2} [A-Z][a-z]{2}");
             assertThat(point.count()).isNotNegative();
         });
-        assertThat(stats.growthSeries().get(1).count()).isEqualTo(2L);
-        assertThat(stats.growthSeries().get(28).count()).isEqualTo(1L);
+        // Oldest first, so index 0 is 29 days ago and index 29 is today.
+        assertThat(stats.growthSeries().get(0).count()).isEqualTo(1L);
+        assertThat(stats.growthSeries().get(28).count()).isEqualTo(2L);
+        assertThat(stats.growthSeries().get(29).count()).isZero();
         assertThat(stats.usersByRole()).containsKeys("CUSTOMER", "ADMIN");
     }
 
     @Test
     @DisplayName("The admin directory page is capped so one request cannot ask for everything")
     void shouldClampTheAdminPageSize() {
-        when(userRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any()))
+        when(userRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(org.springframework.data.domain.Pageable.class)))
                 .thenReturn(org.springframework.data.domain.Page.empty());
 
         PageResponse<UserSummaryResponse> first = PageResponse.from(

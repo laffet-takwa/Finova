@@ -29,6 +29,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -44,8 +45,13 @@ public class AdminUserService {
 
     private static final String RESOURCE_USER = "user";
     private static final int GROWTH_WINDOW_DAYS = 30;
+    /**
+     * Pinned to English on purpose: these labels are chart axis text, not display
+     * strings, and a machine whose default locale is French would otherwise change
+     * the axis language for half the deployments.
+     */
     private static final DateTimeFormatter DAY_LABEL =
-            DateTimeFormatter.ofPattern("dd MMM").withZone(ZoneOffset.UTC);
+            DateTimeFormatter.ofPattern("dd MMM", Locale.ENGLISH).withZone(ZoneOffset.UTC);
 
     private final UserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
