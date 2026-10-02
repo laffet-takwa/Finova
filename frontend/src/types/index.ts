@@ -159,6 +159,7 @@ export interface Account {
   status: AccountStatus
   nickname?: string | null
   iban?: string | null
+  bankName?: string
   createdAt: string
   updatedAt: string
 }
@@ -186,6 +187,8 @@ export interface AccountStatusRequest {
 }
 
 export interface BeneficiaryLookup {
+  accountId: string
+  userId: string
   accountNumber: string
   maskedAccountNumber: string
   accountType: AccountType
@@ -289,13 +292,20 @@ export interface TransactionFilters {
   sort?: string
 }
 
+/**
+ * Dashboard aggregates for the signed-in customer.
+ *
+ * There is deliberately no `currency`: a customer may hold TND, EUR and USD
+ * accounts at once, and a single currency on an income/expense total would be
+ * arithmetic that silently mixes them. The caller derives the display currency
+ * from the accounts it already holds (`accountStore.primaryCurrency`).
+ */
 export interface TransactionSummary {
   income: number
   expenses: number
   transactionCount: number
   monthChangePercent: number
   monthChangeAbsolute: number
-  currency: Currency
   dailySeries: Array<{ label: string; income: number; expenses: number; count: number }>
   recentTransactions: Transaction[]
 }
@@ -368,8 +378,16 @@ export interface FraudReviewRequest {
 
 export interface Notification {
   id: string
-  /** Present only on the administrator activity feed, never on the customer inbox. */
+  /**
+   * Present only on the administrator activity feed (`/api/notifications/admin/feed`).
+   * The customer inbox deliberately never carries it — the caller already knows
+   * who they are, so it would be surface area for nothing.
+   */
   userId?: string | null
+  /** Masked owner id, admin feed only, so a row can be matched to an audit entry by eye. */
+  userDisplayHint?: string | null
+  /** Administrator feed only: traces the row back to the Kafka envelope that produced it. */
+  correlationId?: string | null
   type: NotificationType
   category: NotificationCategory
   severity: NotificationSeverity
@@ -416,6 +434,7 @@ export interface NotificationPreference {
   transferAlerts: boolean
   securityAlerts: boolean
   marketingEmails: boolean
+  updatedAt?: string
 }
 
 export interface AdminDashboardStats {

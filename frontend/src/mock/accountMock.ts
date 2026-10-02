@@ -170,6 +170,8 @@ export const mockAccountApi = {
     }
 
     return {
+      accountId: account.id,
+      userId: account.userId,
       accountNumber: account.accountNumber,
       maskedAccountNumber: account.maskedAccountNumber,
       accountType: account.accountType,

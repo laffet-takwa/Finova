@@ -10,6 +10,8 @@
     "build:only": "vite build",
     "preview": "vite preview --port 4173",
     "typecheck": "vue-tsc --noEmit",
+    "contracts": "node ../scripts/check-contracts.mjs",
+    "verify": "npm run typecheck && npm run contracts && npm run build:only",
     "lint": "eslint . --ext .ts,.vue"
   },
   "dependencies": {

@@ -34,7 +34,7 @@ const balancesHidden = ref(false)
 
 const greeting = computed(() => `${greetingFor()}, ${auth.user?.firstName ?? 'there'}`)
 const summary = computed(() => transactionStore.summary)
-const summaryCurrency = computed(() => summary.value?.currency ?? accountStore.primaryCurrency)
+const summaryCurrency = computed(() => accountStore.primaryCurrency)
 const myAccountIds = computed(() => new Set(accountStore.accounts.map((account) => account.id)))
 const recentTransactions = computed(() =>
   [...transactionStore.transactions]

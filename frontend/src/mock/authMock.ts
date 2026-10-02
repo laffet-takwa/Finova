@@ -27,7 +27,9 @@ function loadUsers(): StoredUser[] {
   if (raw) return JSON.parse(raw) as StoredUser[]
   const seeded: StoredUser[] = Object.values(DEMO_USERS).map((user) => ({
     ...user,
-    passwordHash: DEMO_PASSWORD,
+    // Must be hashed, exactly like `register` does — `verifyPassword` compares
+    // against `hashPassword(...)`, so a seeded plaintext hash can never log in.
+    passwordHash: hashPassword(DEMO_PASSWORD),
   }))
   localStorage.setItem(USERS_KEY, JSON.stringify(seeded))
   return seeded

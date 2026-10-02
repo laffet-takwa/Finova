@@ -6,7 +6,8 @@ import PageHeader from '@/components/ui/PageHeader.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseToggle from '@/components/ui/BaseToggle.vue'
 import SearchInput from '@/components/ui/SearchInput.vue'
-import TabList, { type TabItem } from '@/components/ui/TabList.vue'
+import TabList from '@/components/ui/TabList.vue'
+import { tabPanelId, type TabItem } from '@/components/ui/tabs'
 import Pagination from '@/components/ui/Pagination.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -65,7 +66,13 @@ const emptyDescription = computed(() => {
 })
 
 const statsLabels = computed(() => stats.value?.last7Days.map((point) => point.label) ?? [])
-const statsCounts = computed(() => stats.value?.last7Days.map((point) => point.count) ?? [])
+const statsDatasets = computed(() => [
+  {
+    label: 'Notifications',
+    data: stats.value?.last7Days.map((point) => point.count) ?? [],
+    color: '#3B82F6',
+  },
+])
 
 async function load(): Promise<void> {
   offline.value = false
@@ -196,10 +203,16 @@ onMounted(async () => {
         <TabList
           :tabs="tabs"
           :model-value="category || 'ALL'"
-          aria-label="Notification categories"
+          :ariaLabel="'Notification categories'"
           @update:model-value="onTabChange"
         />
 
+        <div
+          role="tabpanel"
+          :id="tabPanelId('Notification categories', category || 'ALL')"
+          aria-label="Notifications list"
+          class="space-y-4"
+        >
         <div class="fin-card p-4">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="min-w-[12rem] flex-1">
@@ -207,7 +220,7 @@ onMounted(async () => {
                 v-model="searchText"
                 label="notifications"
                 placeholder="Search notifications"
-                debounce-ms="350"
+                :debounce-ms="350"
                 @search="onSearch"
               />
             </div>
@@ -282,6 +295,7 @@ onMounted(async () => {
             />
           </div>
         </template>
+        </div>
       </div>
 
       <!-- Context: last 7 days -->
@@ -291,7 +305,7 @@ onMounted(async () => {
           title="Last 7 days"
           :subtitle="stats ? `${stats.total} notifications in total · ${stats.unread} unread` : undefined"
           :labels="statsLabels"
-          :datasets="[{ label: 'Notifications', data: statsCounts, color: '#3B82F6' }]"
+          :datasets="statsDatasets"
           :currency="''"
           :height="190"
           :loading="statsLoading"

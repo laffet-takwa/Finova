@@ -314,7 +314,6 @@ export const mockTransactionApi = {
       transactionCount: db.transactions.length,
       monthChangePercent: 4.8,
       monthChangeAbsolute: 580.4,
-      currency: 'TND',
       dailySeries,
       recentTransactions: db.transactions.slice(0, 6),
     }

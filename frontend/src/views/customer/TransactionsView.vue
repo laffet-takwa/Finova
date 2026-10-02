@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowUpRight, Receipt } from 'lucide-vue-next'
+import { ArrowUpRight } from 'lucide-vue-next'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
@@ -36,11 +36,6 @@ const STATUS_OPTIONS = [
   { value: 'FLAGGED', label: 'Flagged' },
   { value: 'FAILED', label: 'Failed' },
   { value: 'REJECTED', label: 'Rejected' },
-]
-
-const ACCOUNT_TYPE_OPTIONS: Array<{ value: AccountType; label: string }> = [
-  { value: 'CHECKING', label: 'Checking' },
-  { value: 'SAVINGS', label: 'Savings' },
 ]
 
 const searchText = ref(typeof route.query.q === 'string' ? route.query.q : '')
@@ -171,11 +166,27 @@ watch(
 watch(() => [filters.from, filters.to], () => reload())
 
 const summary = computed(() => transactionStore.summary)
+/**
+ * The summary deliberately carries no currency (a customer may hold TND, EUR and
+ * USD at once), so the display currency comes from the accounts we already hold.
+ */
+const summaryCurrency = computed(() => accountStore.primaryCurrency)
 const chartLabels = computed(() =>
   (summary.value?.dailySeries ?? []).slice(-14).map((point) => point.label),
 )
-const chartIncome = computed(() => (summary.value?.dailySeries ?? []).slice(-14).map((point) => point.income))
-const chartExpenses = computed(() => (summary.value?.dailySeries ?? []).slice(-14).map((point) => point.expenses))
+// Built in script so the chart is only rebuilt when the series actually change.
+const chartDatasets = computed(() => [
+  {
+    label: 'Money in',
+    data: (summary.value?.dailySeries ?? []).slice(-14).map((point) => point.income),
+    color: '#16A34A',
+  },
+  {
+    label: 'Money out',
+    data: (summary.value?.dailySeries ?? []).slice(-14).map((point) => point.expenses),
+    color: '#3B82F6',
+  },
+])
 
 onMounted(async () => {
   try {
@@ -226,7 +237,7 @@ onMounted(async () => {
             v-model="searchText"
             label="transactions"
             placeholder="Search description or reference"
-            debounce-ms="350"
+            :debounce-ms="350"
             @search="onSearch"
           />
         </template>
@@ -294,21 +305,18 @@ onMounted(async () => {
       <ChartCard
         type="bar"
         title="Daily volume"
-        subtitle="Money in and out over the last 14 days"
+        :subtitle="`Money in and out over the last 14 days, shown in ${summaryCurrency}`"
         :labels="chartLabels"
-        :datasets="[
-          { label: 'Money in', data: chartIncome, color: '#16A34A' },
-          { label: 'Money out', data: chartExpenses, color: '#3B82F6' },
-        ]"
-        :currency="summary?.currency ?? 'TND'"
+        :datasets="chartDatasets"
+        :currency="summaryCurrency"
         :height="220"
         :loading="!summary"
         empty-message="No movement recorded in this period yet."
       >
         <template #actions>
           <p class="text-caption text-ink-subtle">
-            In {{ formatMoney(summary?.income ?? 0, summary?.currency ?? 'TND') }} ·
-            out {{ formatMoney(summary?.expenses ?? 0, summary?.currency ?? 'TND') }}
+            In {{ formatMoney(summary?.income ?? 0, summaryCurrency) }} ·
+            out {{ formatMoney(summary?.expenses ?? 0, summaryCurrency) }}
           </p>
         </template>
       </ChartCard>
