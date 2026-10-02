@@ -1,4 +1,4 @@
-ï»¿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -26,7 +26,7 @@ import { useFraudStore } from '@/stores/fraudStore'
 import { formatDateTime, formatMoney, formatPercent, formatRelative } from '@/utils/format'
 import type { FraudAlert } from '@/types'
 
-/** Palette values from tailwind.config.js â€” a chart needs concrete colours, markup does not. */
+/** Palette values from tailwind.config.js — a chart needs concrete colours, markup does not. */
 const CHART = {
   volume: '#173B5F',
   throughput: '#25527D',
@@ -54,7 +54,7 @@ const accountStats = computed(() => adminStore.accountStats)
 const transactionStats = computed(() => adminStore.transactionStats)
 const fraudStats = computed(() => fraudStore.stats)
 
-/** True once the batch has settled with no transaction stats to show â€” a real gap, not a load. */
+/** True once the batch has settled with no transaction stats to show — a real gap, not a load. */
 const transactionStatsMissing = computed(() => !overviewLoading.value && transactionStats.value === null)
 const alertStatsMissing = computed(() => !fraudLoading.value && fraudStats.value === null)
 
@@ -86,13 +86,13 @@ const userGrowthDatasets = computed(() => [
 ])
 
 const totalUsers = computed(() =>
-  userStats.value === null ? 'â€”' : userStats.value.totalUsers.toLocaleString('en-US'),
+  userStats.value === null ? '—' : userStats.value.totalUsers.toLocaleString('en-US'),
 )
 const activeAccounts = computed(() =>
-  accountStats.value === null ? 'â€”' : accountStats.value.activeAccounts.toLocaleString('en-US'),
+  accountStats.value === null ? '—' : accountStats.value.activeAccounts.toLocaleString('en-US'),
 )
 const completedToday = computed(() =>
-  transactionStats.value === null ? 'â€”' : transactionStats.value.completedToday.toLocaleString('en-US'),
+  transactionStats.value === null ? '—' : transactionStats.value.completedToday.toLocaleString('en-US'),
 )
 const volumeToday = computed(() => formatMoney(transactionStats.value?.volumeToday ?? 0, 'TND'))
 const alertsTone = computed<'neutral' | 'danger'>(() =>
@@ -175,7 +175,7 @@ onBeforeUnmount(() => {
             <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
             <span class="relative inline-flex h-2 w-2 rounded-full bg-success" />
           </span>
-          <span>Live Â· updated {{ lastUpdatedLabel }}</span>
+          <span>Live · updated {{ lastUpdatedLabel }}</span>
         </p>
         <BaseButton
           variant="secondary"
@@ -229,7 +229,7 @@ onBeforeUnmount(() => {
         label="Active Accounts"
         :value="activeAccounts"
         :loading="overviewLoading"
-        :hint="accountStats ? `${accountStats.blockedAccounts} blocked Â· ${accountStats.closedAccounts} closed` : 'Open for transfers'"
+        :hint="accountStats ? `${accountStats.blockedAccounts} blocked · ${accountStats.closedAccounts} closed` : 'Open for transfers'"
       >
         <template #icon>
           <Wallet :size="17" />
@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
         label="Transactions Today"
         :value="completedToday"
         :loading="overviewLoading"
-        :hint="transactionStats ? `${transactionStats.failedToday} failed Â· ${transactionStats.flaggedCount} flagged` : 'Settled today'"
+        :hint="transactionStats ? `${transactionStats.failedToday} failed · ${transactionStats.flaggedCount} flagged` : 'Settled today'"
       >
         <template #icon>
           <ArrowLeftRight :size="17" />
@@ -274,6 +274,7 @@ onBeforeUnmount(() => {
 
     <div class="grid gap-4 lg:grid-cols-2 lg:gap-5">
       <ChartCard
+        class="min-w-0"
         v-if="!transactionStatsMissing"
         type="bar"
         title="Transaction volume"
@@ -301,6 +302,8 @@ onBeforeUnmount(() => {
       </div>
 
       <ChartCard
+
+        class="min-w-0"
         v-if="!transactionStatsMissing"
         type="bar"
         title="Transaction throughput"
@@ -335,6 +338,8 @@ onBeforeUnmount(() => {
       </div>
 
       <ChartCard
+
+        class="min-w-0"
         v-if="!alertStatsMissing"
         type="line"
         title="Fraud alerts raised"
@@ -358,6 +363,8 @@ onBeforeUnmount(() => {
       </div>
 
       <ChartCard
+
+        class="min-w-0"
         v-if="userStats"
         type="line"
         title="User growth"
@@ -435,7 +442,7 @@ onBeforeUnmount(() => {
                 {{ alert.reference }}
               </span>
               <span class="mt-0.5 block truncate text-caption text-ink-subtle">
-                {{ alert.senderAccountNumber }} Â· {{ alert.reasons[0] ?? 'No reason recorded' }}
+                {{ alert.senderAccountNumber }} · {{ alert.reasons[0] ?? 'No reason recorded' }}
               </span>
             </span>
             <span class="shrink-0 text-right">
@@ -485,7 +492,7 @@ onBeforeUnmount(() => {
               </span>
               <span class="mt-0.5 block truncate text-caption text-ink-subtle">
                 {{ entry.resource }}<span v-if="entry.resourceId" class="font-mono"> {{ entry.resourceId }}</span>
-                Â· {{ entry.service }}
+                · {{ entry.service }}
               </span>
             </span>
             <span class="flex shrink-0 items-center gap-3">
@@ -557,7 +564,7 @@ onBeforeUnmount(() => {
             <span class="min-w-0">
               <span class="block text-[0.9375rem] font-semibold text-ink">Manage users</span>
               <span class="mt-0.5 block text-caption text-ink-muted">
-                {{ userStats?.blockedUsers ?? 0 }} blocked Â· {{ userStats?.newUsersThisMonth ?? 0 }} joined this month
+                {{ userStats?.blockedUsers ?? 0 }} blocked · {{ userStats?.newUsersThisMonth ?? 0 }} joined this month
               </span>
             </span>
           </button>

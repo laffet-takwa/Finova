@@ -1,4 +1,4 @@
-ï»¿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -40,7 +40,7 @@ const CHART = {
 
 const RISK_OPTIONS = [
   { value: 'HIGH', label: 'High risk (70 and above)' },
-  { value: 'MEDIUM', label: 'Medium risk (40â€“69)' },
+  { value: 'MEDIUM', label: 'Medium risk (40–69)' },
   { value: 'LOW', label: 'Low risk (below 40)' },
 ]
 
@@ -219,7 +219,7 @@ const confirmDetail = computed(() => {
   const alert = target.value
   const amount = alert ? formatMoney(alert.amount, alert.currency) : ''
   if (confirmKind.value === 'safe') {
-    return `The transaction is no longer held: ${amount} settles and the receiver is credited. If the transfer really was fraudulent you will have to recover that money separately â€” this decision cannot be undone from the console.`
+    return `The transaction is no longer held: ${amount} settles and the receiver is credited. If the transfer really was fraudulent you will have to recover that money separately — this decision cannot be undone from the console.`
   }
   return `This locks a real customer out of the account immediately and drops its available balance to zero. The held transfer stays frozen and the alert is confirmed rather than resolved. Blocking the wrong account takes the customer's own money away from them with no automatic reversal.`
 })
@@ -291,7 +291,7 @@ onMounted(() => {
         ]"
         :key="card.key"
         :label="card.label"
-        :value="card.value === null ? 'â€”' : card.value.toLocaleString('en-US')"
+        :value="card.value === null ? '—' : card.value.toLocaleString('en-US')"
         :tone="card.tone"
         :hint="card.hint"
         :loading="fraudStore.loading && !stats && !statsError"
@@ -317,6 +317,7 @@ onMounted(() => {
     <!-- Charts -->
     <div class="grid gap-4 lg:grid-cols-2 lg:gap-5">
       <ChartCard
+        class="min-w-0"
         v-if="stats"
         type="doughnut"
         title="Risk distribution"
@@ -350,6 +351,8 @@ onMounted(() => {
       </div>
 
       <ChartCard
+
+        class="min-w-0"
         v-if="stats"
         type="bar"
         title="Alerts over time"
@@ -362,7 +365,7 @@ onMounted(() => {
       >
         <template #actions>
           <p v-if="stats" class="text-caption text-ink-subtle">
-            {{ stats.confirmedToday.toLocaleString('en-US') }} confirmed fraud Â·
+            {{ stats.confirmedToday.toLocaleString('en-US') }} confirmed fraud ·
             {{ stats.totalAssessedToday.toLocaleString('en-US') }} assessed today
           </p>
         </template>
@@ -446,7 +449,7 @@ onMounted(() => {
         <EmptyState
           :icon="ShieldCheck"
           title="No alerts match these filters"
-          description="Nothing in the fraud queue matches the current risk level, status, search term or date window. That is good news â€” reset the filters to widen the view."
+          description="Nothing in the fraud queue matches the current risk level, status, search term or date window. That is good news — reset the filters to widen the view."
           action-label="Reset filters"
           @action="onReset"
         />
@@ -578,7 +581,7 @@ onMounted(() => {
               </span>
             </span>
             <span class="text-caption text-ink-muted">
-              {{ account.count }} alert{{ account.count === 1 ? '' : 's' }} Â· peak
+              {{ account.count }} alert{{ account.count === 1 ? '' : 's' }} · peak
               <span class="font-semibold text-ink">{{ account.maxRiskScore }}/100</span>
             </span>
           </div>
