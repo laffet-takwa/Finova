@@ -1,0 +1,22 @@
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    show-sql: false
+  cloud:
+    service-registry:
+      eureka:
+        client:
+          register-with-eureka: true
+          fetch-registry: true
+
+finova:
+  users:
+    recent-login-limit: 8
+    audit-retention-days: 365
+
+logging:
+  level:
+    com.finova.user: DEBUG
+    org.springframework.kafka: WARN

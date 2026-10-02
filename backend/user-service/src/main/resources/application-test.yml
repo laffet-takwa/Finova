@@ -1,0 +1,49 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+  datasource:
+    url: jdbc:postgresql://localhost:5432/finova_users_test
+    username: finova
+    password: finova
+  jpa:
+    hibernate.ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  kafka:
+    # No broker is available in a build, so the listener containers must not try
+    # to connect or the context would sit retrying for the whole test run.
+    listener:
+      auto-startup: false
+  cloud:
+    service-registry:
+      eureka:
+        enabled: false
+        client:
+          enabled: false
+          register-with-eureka: false
+          fetch-registry: false
+
+management:
+  health:
+    kafka:
+      enabled: false
+
+finova:
+  jwt:
+    secret: finova-test-secret-key-that-is-long-enough-32b
+    issuer: finova
+  users:
+    recent-login-limit: 5
+    # Pushed out of the way of the test run: the purge must not fire while a test
+    # is asserting on the audit table.
+    audit-retention-days: 365
+    audit-purge-cron: "0 0 0 1 1 ?"
+
+logging:
+  level:
+    com.finova.user: INFO
+    org.springframework.kafka: ERROR
+    org.hibernate: WARN
