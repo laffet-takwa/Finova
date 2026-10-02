@@ -8,12 +8,14 @@ import {
   CircleDot,
   RefreshCw,
   ShieldAlert,
+  ShieldQuestion,
   UserCheck,
 } from 'lucide-vue-next'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import DetailRow from '@/components/ui/DetailRow.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import ErrorState from '@/components/ui/ErrorState.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import RiskBadge from '@/components/ui/RiskBadge.vue'
@@ -22,6 +24,7 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { useFraudStore } from '@/stores/fraudStore'
 import { useToastStore } from '@/stores/toastStore'
+import { AppError } from '@/utils/errors'
 import { formatDateTime, formatMoney, formatRelative, maskAccountNumber } from '@/utils/format'
 import type { FraudAlert, FraudTimelineStep } from '@/types'
 
@@ -38,12 +41,21 @@ const alertId = computed(() => (typeof route.params.id === 'string' ? route.para
 
 const loading = ref(true)
 const error = ref<string | null>(null)
+const notFound = ref(false)
 const note = ref('')
 const confirmOpen = ref(false)
 const action = ref<Action>('review')
 const acting = ref(false)
 
-const alert = computed<FraudAlert | null>(() => fraudStore.selected)
+/**
+ * Guarded by id: the store keeps the last alert it fetched, so navigating from one
+ * alert straight to a bad id would otherwise render the previous alert under the
+ * new URL. Only the alert the route actually points at is ever shown.
+ */
+const alert = computed<FraudAlert | null>(() => {
+  const selected = fraudStore.selected
+  return selected !== null && selected.id === alertId.value ? selected : null
+})
 const stats = computed(() => fraudStore.stats)
 
 const timeline = computed<FraudTimelineStep[]>(() => alert.value?.timeline ?? [])
@@ -113,7 +125,9 @@ const confirmLabel = computed(() => {
 })
 
 async function load(): Promise<void> {
+  notFound.value = false
   if (!alertId.value) {
+    notFound.value = true
     error.value = 'This alert link is missing its identifier.'
     loading.value = false
     return
@@ -123,7 +137,12 @@ async function load(): Promise<void> {
   try {
     await fraudStore.fetchOne(alertId.value)
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'We could not load this fraud alert.'
+    if (cause instanceof AppError && cause.status === 404) {
+      notFound.value = true
+      error.value = null
+    } else {
+      error.value = cause instanceof Error ? cause.message : 'We could not load this fraud alert.'
+    }
   } finally {
     loading.value = false
   }
@@ -197,6 +216,18 @@ onMounted(() => {
       </div>
       <span class="sr-only">Loading fraud alert</span>
     </div>
+
+    <EmptyState
+      v-else-if="notFound && !alert"
+      class="fin-card"
+      :icon="ShieldQuestion"
+      title="This fraud alert no longer exists"
+      description="The fraud service has no record of it. It may have been purged with the audit retention window, or the link may be wrong. Nothing is held against an alert that is not here."
+    >
+      <BaseButton variant="primary" @click="router.push({ name: 'admin-fraud' })">
+        Back to the fraud queue
+      </BaseButton>
+    </EmptyState>
 
     <ErrorState
       v-else-if="error && !alert"

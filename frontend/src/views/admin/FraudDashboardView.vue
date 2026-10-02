@@ -33,7 +33,10 @@ import type { FraudAlert, RiskLevel } from '@/types'
 
 const CHART = {
   high: '#DC2626',
-  medium: '#B45309',
+  // The warning amber rather than a darker amber: at legend-dot size the darker
+  // tone reads as a second red, which would make two of the three risk bands
+  // indistinguishable — the exact confusion the chart exists to prevent.
+  medium: '#F59E0B',
   low: '#16A34A',
   alerts: '#25527D',
 } as const

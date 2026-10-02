@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -38,6 +39,7 @@ import java.util.UUID;
  */
 @Component
 @Profile("dev")
+@ConditionalOnProperty(name = "finova.seed.enabled", havingValue = "true", matchIfMissing = true)
 public class DataSeeder implements ApplicationRunner {
 
     /** The demo password shared by every seeded identity. */
@@ -79,10 +81,10 @@ public class DataSeeder implements ApplicationRunner {
 
         List<User> seeded = List.of(
                 admin(passwordHash),
-                customer(DEMO_TAKWA, "Takwa", "Ferchichi", "+216 55 214 780", passwordHash),
-                customer(DEMO_INES, "Ines", "Bouzid", "+216 24 771 309", passwordHash),
-                customer(DEMO_YASSINE, "Yassine", "Trabelsi", "+216 98 402 118", passwordHash),
-                customer(DEMO_SALMA, "Salma", "Gharbi", "+216 50 918 442", passwordHash),
+                customer(DEMO_TAKWA, "Takwa", "Ferchichi", "+216 55 214 780", passwordHash, 3),
+                customer(DEMO_INES, "Ines", "Bouzid", "+216 24 771 309", passwordHash, 26),
+                customer(DEMO_YASSINE, "Yassine", "Trabelsi", "+216 98 402 118", passwordHash, 51),
+                customer(DEMO_SALMA, "Salma", "Gharbi", "+216 50 918 442", passwordHash, 118),
                 blockedCustomer(DEMO_SAMI, "Sami", "Mejboud", "+216 26 845 903", passwordHash));
         userRepository.saveAll(seeded);
 
@@ -93,20 +95,34 @@ public class DataSeeder implements ApplicationRunner {
     private User admin(String passwordHash) {
         User user = base(DEMO_ADMIN, "Amine", "Ben Salah", "+216 74 903 118", passwordHash);
         user.setRole(Role.ADMIN);
+        user.setLastLoginAt(Instant.now().minus(2, ChronoUnit.HOURS));
         return user;
     }
 
+    /**
+     * A seeded identity carries the sign-in time a real profile would show, so the
+     * dashboard and the security panel have something honest to render on a fresh
+     * clone instead of an empty "never signed in".
+     */
     private User customer(String email, String firstName, String lastName, String phone,
-                          String passwordHash) {
+                          String passwordHash, long hoursSinceLastLogin) {
         User user = base(email, firstName, lastName, phone, passwordHash);
         user.setRole(Role.CUSTOMER);
+        user.setLastLoginAt(Instant.now().minus(hoursSinceLastLogin, ChronoUnit.HOURS));
         return user;
     }
 
+    /**
+     * The blocked demo identity keeps a last sign-in from before it was blocked:
+     * a blocked account that looks like it never signed in would be a history this
+     * platform could not have produced.
+     */
     private User blockedCustomer(String email, String firstName, String lastName, String phone,
                                  String passwordHash) {
-        User user = customer(email, firstName, lastName, phone, passwordHash);
+        User user = base(email, firstName, lastName, phone, passwordHash);
+        user.setRole(Role.CUSTOMER);
         user.setStatus(UserStatus.BLOCKED);
+        user.setLastLoginAt(Instant.now().minus(9, ChronoUnit.DAYS));
         return user;
     }
 

@@ -12,6 +12,7 @@ import {
   Users,
   Wallet,
 } from 'lucide-vue-next'
+import AuditEntryRow from '@/components/ui/AuditEntryRow.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import ChartCard from '@/components/charts/ChartCard.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -23,16 +24,20 @@ import StatCard from '@/components/ui/StatCard.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { useAdminStore } from '@/stores/adminStore'
 import { useFraudStore } from '@/stores/fraudStore'
-import { formatDateTime, formatMoney, formatPercent, formatRelative } from '@/utils/format'
+import { formatCompact, formatMoney, formatPercent, formatRelative } from '@/utils/format'
 import type { FraudAlert } from '@/types'
 
 /** Palette values from tailwind.config.js — a chart needs concrete colours, markup does not. */
 const CHART = {
   volume: '#173B5F',
   throughput: '#25527D',
+  failure: '#DC2626',
   alerts: '#B45309',
   growth: '#3B82F6',
 } as const
+
+/** Above this value a headline amount is abbreviated so the card does not wrap. */
+const COMPACT_FROM = 1_000_000
 
 /** Above this many open alerts the risk queue becomes the console's priority. */
 const ALERT_PRESSURE_THRESHOLD = 8
@@ -63,15 +68,56 @@ const riskyAlerts = computed<FraudAlert[]>(() => fraudStore.alerts.filter((alert
 
 const dailyVolume = computed(() => transactionStats.value?.dailyVolume ?? [])
 const dailyVolumeLabels = computed(() => dailyVolume.value.map((point) => point.label))
+/**
+ * `SeriesPoint.total` carries money when the backend reports value; when it only
+ * reports `count` the series is a number of transfers, and labelling it as TND
+ * would be a lie. The chart follows the data rather than the wish.
+ */
+const dailyVolumeIsMoney = computed(
+  () => dailyVolume.value.length > 0 && dailyVolume.value.every((point) => typeof point.total === 'number'),
+)
+const dailyVolumeSubtitle = computed(() =>
+  dailyVolumeIsMoney.value
+    ? 'Settled value per day, last 30 days'
+    : 'Settled transfers per day, last 30 days (this stats endpoint reports counts, not value)',
+)
 const dailyVolumeDatasets = computed(() => [
-  { label: 'Settled transfers', data: dailyVolume.value.map((point) => point.count), color: CHART.volume },
+  {
+    label: dailyVolumeIsMoney.value ? 'Settled value' : 'Settled transfers',
+    data: dailyVolume.value.map((point) =>
+      dailyVolumeIsMoney.value ? (point.total ?? 0) : point.count,
+    ),
+    color: CHART.volume,
+  },
 ])
 
 const hourlyVolume = computed(() => transactionStats.value?.hourlyVolume ?? [])
 const hourlyLabels = computed(() => hourlyVolume.value.map((point) => point.label))
+const hourlySettled = computed(() => hourlyVolume.value.map((point) => point.count))
+/**
+ * The transaction stats endpoint reports one decided-transfer count per hour plus
+ * today's completed and failed totals — it has no per-hour failure series. The
+ * failed bars are therefore today's real failure share spread over the same hours,
+ * and the subtitle states that rather than implying they were measured per hour.
+ */
+const failureShare = computed(() => {
+  const stats = transactionStats.value
+  if (!stats) return 0
+  const decided = stats.completedToday + stats.failedToday
+  return decided > 0 ? stats.failedToday / decided : 0
+})
+const hourlyFailed = computed(() =>
+  hourlyVolume.value.map((point) => Math.max(0, Math.round(point.count * failureShare.value))),
+)
 const hourlyDatasets = computed(() => [
-  { label: 'Settled per hour', data: hourlyVolume.value.map((point) => point.count), color: CHART.throughput },
+  { label: 'Settled', data: hourlySettled.value, color: CHART.throughput },
+  { label: 'Failed', data: hourlyFailed.value, color: CHART.failure },
 ])
+const hourlySubtitle = computed(() =>
+  failureShare.value > 0
+    ? `Settled is the per-hour series reported by the transaction service. Failed is today's ${formatPercent(failureShare.value * 100)} failure share spread over the same hours, because failures are counted per day rather than per hour.`
+    : 'Settled transfers per hour. No transfers were decided today, so there is no failure share to show.',
+)
 
 const dailyAlerts = computed(() => fraudStats.value?.dailyAlerts ?? [])
 const dailyAlertLabels = computed(() => dailyAlerts.value.map((point) => point.label))
@@ -95,15 +141,36 @@ const completedToday = computed(() =>
   transactionStats.value === null ? '—' : transactionStats.value.completedToday.toLocaleString('en-US'),
 )
 const volumeToday = computed(() => formatMoney(transactionStats.value?.volumeToday ?? 0, 'TND'))
+/** Headline money is abbreviated above a million so the card never wraps mid-figure. */
+const volumeTodayCard = computed(() => {
+  const stats = transactionStats.value
+  if (stats === null) return '—'
+  return stats.volumeToday >= COMPACT_FROM
+    ? `${formatCompact(stats.volumeToday)} TND`
+    : formatMoney(stats.volumeToday, 'TND')
+})
 const alertsTone = computed<'neutral' | 'danger'>(() =>
   adminStore.openAlertCount > ALERT_PRESSURE_THRESHOLD ? 'danger' : 'neutral',
 )
+/** The count is the `status=OPEN` total, so it is labelled open — not unresolved. */
 const alertsHint = computed(() =>
   adminStore.openAlertCount > ALERT_PRESSURE_THRESHOLD
     ? `Above the ${ALERT_PRESSURE_THRESHOLD}-alert review threshold`
-    : 'Open and under review, platform-wide',
+    : 'Open, no decision taken yet',
 )
 const lastUpdatedLabel = computed(() => (lastUpdated.value ? formatRelative(lastUpdated.value) : 'not yet'))
+
+/** Captions below the quick actions show a dash rather than a false zero while loading. */
+const openAlertSummary = computed(() => {
+  if (!adminStore.loaded) return 'Counting open alerts…'
+  const count = adminStore.openAlertCount
+  return `${count.toLocaleString('en-US')} open alert${count === 1 ? '' : 's'} waiting on a decision`
+})
+
+const userSummary = computed(() => {
+  if (!userStats.value) return 'Counting blocked and new accounts…'
+  return `${userStats.value.blockedUsers.toLocaleString('en-US')} blocked · ${userStats.value.newUsersThisMonth.toLocaleString('en-US')} joined this month`
+})
 
 async function loadOverview(force = false): Promise<void> {
   refreshing.value = true
@@ -213,7 +280,8 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+<!-- 2 on mobile, 3 on tablet, 5 once the sidebar leaves room. -->
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 xl:grid-cols-5">
       <StatCard
         label="Total Users"
         :value="totalUsers"
@@ -247,9 +315,9 @@ onBeforeUnmount(() => {
         </template>
       </StatCard>
 
-      <StatCard
+<StatCard
         label="Transaction Volume"
-        :value="volumeToday"
+        :value="volumeTodayCard"
         tone="primary"
         :loading="overviewLoading"
         :hint="transactionStats ? `${formatPercent(transactionStats.successRate)} of decided transfers settled` : 'Settled today'"
@@ -273,15 +341,16 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="grid gap-4 lg:grid-cols-2 lg:gap-5">
-      <ChartCard
-        class="min-w-0"
+<ChartCard
         v-if="!transactionStatsMissing"
+        class="min-w-0"
         type="bar"
         title="Transaction volume"
-        subtitle="Settled transfers per day, last 30 days"
+        :subtitle="dailyVolumeSubtitle"
         :labels="dailyVolumeLabels"
         :datasets="dailyVolumeDatasets"
-        :money-format="false"
+        :currency="dailyVolumeIsMoney ? 'TND' : ''"
+        :money-format="dailyVolumeIsMoney"
         :height="250"
         :loading="overviewLoading"
         empty-message="No settled transfers in this period."
@@ -302,12 +371,11 @@ onBeforeUnmount(() => {
       </div>
 
       <ChartCard
-
-        class="min-w-0"
         v-if="!transactionStatsMissing"
+        class="min-w-0"
         type="bar"
-        title="Transaction throughput"
-        subtitle="Settled transfers per hour across the last 24 hours"
+        title="Successful vs failed"
+        :subtitle="hourlySubtitle"
         :labels="hourlyLabels"
         :datasets="hourlyDatasets"
         :money-format="false"
@@ -330,7 +398,7 @@ onBeforeUnmount(() => {
       <div v-else-if="transactionStatsMissing" class="fin-card p-4 sm:p-5">
         <ErrorState
           compact
-          title="Transaction throughput is unavailable"
+          title="Successful vs failed is unavailable"
           description="The transaction service did not answer this request."
           retry-label="Try again"
           @retry="loadOverview(true)"
@@ -338,9 +406,8 @@ onBeforeUnmount(() => {
       </div>
 
       <ChartCard
-
-        class="min-w-0"
         v-if="!alertStatsMissing"
+        class="min-w-0"
         type="line"
         title="Fraud alerts raised"
         subtitle="Alerts created per day, last 30 days"
@@ -362,10 +429,9 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <ChartCard
-
-        class="min-w-0"
+<ChartCard
         v-if="userStats"
+        class="min-w-0"
         type="line"
         title="User growth"
         subtitle="Registered users per month, last 12 months"
@@ -377,8 +443,10 @@ onBeforeUnmount(() => {
         empty-message="No user registrations in this period."
       />
 
-      <div v-else class="fin-card p-4 sm:p-5">
+<div v-else class="fin-card p-4 sm:p-5">
+        <Skeleton v-if="overviewLoading" variant="block" :rows="3" />
         <ErrorState
+          v-else
           compact
           title="User growth is unavailable"
           description="The user service did not answer this request."
@@ -396,8 +464,8 @@ onBeforeUnmount(() => {
             Unresolved alerts, highest risk score first. Held funds stay held until an operator decides.
           </p>
         </div>
-        <BaseButton variant="secondary" size="sm" @click="goToFraud">
-          Review fraud alerts
+<BaseButton variant="secondary" size="sm" @click="goToFraud">
+          View all alerts
           <template #trailing>
             <ArrowRight :size="15" aria-hidden="true" />
           </template>
@@ -480,27 +548,9 @@ onBeforeUnmount(() => {
           :icon="FileSearch"
         />
 
-        <ul v-else class="-mx-1 divide-y divide-border/70">
-          <li
-            v-for="entry in adminStore.recentAudit"
-            :key="entry.id"
-            class="flex flex-col gap-1 px-1 py-3 sm:flex-row sm:items-center sm:gap-4"
-          >
-            <span class="min-w-0 flex-1">
-              <span class="block text-[0.875rem] font-medium capitalize text-ink">
-                {{ entry.action.replace(/_/g, ' ').toLowerCase() }}
-              </span>
-              <span class="mt-0.5 block truncate text-caption text-ink-subtle">
-                {{ entry.resource }}<span v-if="entry.resourceId" class="font-mono"> {{ entry.resourceId }}</span>
-                · {{ entry.service }}
-              </span>
-            </span>
-            <span class="flex shrink-0 items-center gap-3">
-              <StatusBadge :status="entry.result" size="sm" />
-              <time :datetime="entry.createdAt" class="text-caption tabular-nums text-ink-subtle">
-                {{ formatDateTime(entry.createdAt) }}
-              </time>
-            </span>
+<ul v-else class="divide-y divide-border/70">
+          <li v-for="entry in adminStore.recentAudit" :key="entry.id">
+            <AuditEntryRow :entry="entry" show-user show-resource />
           </li>
         </ul>
       </section>
@@ -525,8 +575,8 @@ onBeforeUnmount(() => {
             </span>
             <span class="min-w-0">
               <span class="block text-[0.9375rem] font-semibold text-ink">Review fraud alerts</span>
-              <span class="mt-0.5 block text-caption text-ink-muted">
-                {{ adminStore.openAlertCount }} open alert{{ adminStore.openAlertCount === 1 ? '' : 's' }} waiting on a decision
+<span class="mt-0.5 block text-caption text-ink-muted">
+                {{ openAlertSummary }}
               </span>
             </span>
           </button>
@@ -563,8 +613,8 @@ onBeforeUnmount(() => {
             </span>
             <span class="min-w-0">
               <span class="block text-[0.9375rem] font-semibold text-ink">Manage users</span>
-              <span class="mt-0.5 block text-caption text-ink-muted">
-                {{ userStats?.blockedUsers ?? 0 }} blocked · {{ userStats?.newUsersThisMonth ?? 0 }} joined this month
+<span class="mt-0.5 block text-caption text-ink-muted">
+                {{ userSummary }}
               </span>
             </span>
           </button>

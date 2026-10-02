@@ -146,17 +146,46 @@ city from an IP address.
 |---|---|
 | ![Settings](docs/screenshots/settings.png) | ![Preferences](docs/screenshots/settings-notifications.png) |
 
+### Administration
+
+A deliberately different surface: a security operations and back-office
+console. Colour is reserved for genuine risk — red and amber appear only on
+actual risk indicators, never as decoration.
+
+| System overview | Users |
+|---|---|
+| ![Admin dashboard](docs/screenshots/admin-dashboard.png) | ![Admin users](docs/screenshots/admin-users.png) |
+
+| Accounts | Transactions |
+|---|---|
+| ![Admin accounts](docs/screenshots/admin-accounts.png) | ![Admin transactions](docs/screenshots/admin-transactions.png) |
+
+### Fraud & risk operations
+
+Risk distribution, alerts ranked by score, and per-alert review. Every
+money-affecting or destructive action is confirmed — blocking an account
+requires typing `BLOCK`.
+
+| Alert queue | Alert detail |
+|---|---|
+| ![Fraud dashboard](docs/screenshots/admin-fraud.png) | ![Fraud detail](docs/screenshots/admin-fraud-detail.png) |
+
+| Audit trail | System settings |
+|---|---|
+| ![Audit log](docs/screenshots/admin-audit.png) | ![Admin settings](docs/screenshots/admin-settings.png) |
+
 ### Mobile
 
 The layout is redesigned rather than shrunk: a drawer, bottom navigation and
 single-column cards.
 
-| Dashboard | Transactions |
+| Dashboard | Fraud queue |
 |---|---|
-| ![Mobile dashboard](docs/screenshots/mobile/dashboard.mobile.png) | ![Mobile transactions](docs/screenshots/mobile/transactions-filters.mobile.png) |
+| ![Mobile dashboard](docs/screenshots/mobile/dashboard.mobile.png) | ![Mobile fraud](docs/screenshots/mobile/admin-fraud.mobile.png) |
 
-> Administrator and fraud-operation screens are captured by the same script once
-> those views land; see [Known gaps](#known-gaps).
+| Transactions | Admin overview |
+|---|---|
+| ![Mobile transactions](docs/screenshots/mobile/transactions-filters.mobile.png) | ![Mobile admin](docs/screenshots/mobile/admin-dashboard.mobile.png) |
 
 ---
 

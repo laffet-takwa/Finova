@@ -6,6 +6,7 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseModal from '@/components/ui/BaseModal.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
+import AuditEntryRow from '@/components/ui/AuditEntryRow.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import DetailRow from '@/components/ui/DetailRow.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -523,26 +524,8 @@ onMounted(load)
         />
 
         <ul v-else class="mt-3 divide-y divide-border/70">
-          <li
-            v-for="entry in auditTrail"
-            :key="entry.id"
-            class="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-          >
-            <span class="min-w-0">
-              <span class="block text-[0.875rem] font-medium capitalize text-ink">
-                {{ entry.action.replace(/_/g, ' ').toLowerCase() }}
-              </span>
-              <span class="mt-0.5 block truncate text-caption text-ink-subtle">
-                {{ entry.service }}
-                <template v-if="entry.ipAddress"> · {{ entry.ipAddress }}</template>
-              </span>
-            </span>
-            <span class="flex shrink-0 items-center gap-3">
-              <StatusBadge :status="entry.result" size="sm" />
-              <time :datetime="entry.createdAt" class="text-caption tabular-nums text-ink-subtle">
-                {{ formatDateTime(entry.createdAt) }}
-              </time>
-            </span>
+          <li v-for="entry in auditTrail" :key="entry.id">
+            <AuditEntryRow :entry="entry" />
           </li>
         </ul>
       </div>

@@ -146,7 +146,7 @@ onMounted(load)
   <div class="space-y-5 pb-4">
     <PageHeader
       eyebrow="Finova Administration"
-      title="Audit trail"
+      title="Audit logs"
       description="An append-only record written by every Finova service as it handles a request. Entries are never edited or deleted, which is what makes the trail usable in a dispute."
     >
       <template #actions>

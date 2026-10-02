@@ -72,6 +72,7 @@ public class UserProfileService {
     @Transactional
     public AuthUserResponse updateProfile(String userId, UpdateProfileRequest request) {
         User user = requireUser(userId);
+        requireEmailUnchanged(user, request.email());
         user.setFirstName(request.firstName().trim());
         user.setLastName(request.lastName().trim());
         user.setPhone(MappingSupport.trimToNull(request.phone()));
@@ -147,6 +148,27 @@ public class UserProfileService {
                 .map(AuditLog::getCreatedAt)
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * Refuses an attempt to change the address of record here.
+     * <p>
+     * Rejecting is deliberate and so is comparing rather than trusting: the address
+     * is the identity key, it is what the audit trail and every downstream service
+     * key on, and moving it needs a verified flow of its own. Echoing the current
+     * address back is accepted so a client that always submits the whole form is not
+     * punished for sending a field it cannot change.
+     */
+    private void requireEmailUnchanged(User user, String submittedEmail) {
+        if (submittedEmail == null || submittedEmail.isBlank()) {
+            return;
+        }
+        String submitted = MappingSupport.normaliseEmail(submittedEmail);
+        if (!submitted.equals(MappingSupport.normaliseEmail(user.getEmail()))) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR,
+                    "The email address cannot be changed from this screen.",
+                    Map.of("email", "changing the address of record requires a verified flow"));
+        }
     }
 
     private User requireUser(String userId) {

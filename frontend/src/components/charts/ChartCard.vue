@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
   ArcElement,
   BarController,
@@ -103,6 +103,9 @@ function buildConfig(): ChartConfiguration {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      // A doughnut has no axes, so without this it renders at the default 2:1
+      // aspect and sits as a thin ellipse in the middle of the panel.
+      aspectRatio: isDoughnut ? 1.15 : undefined,
       animation: { duration: 420, easing: 'easeOutQuart' },
       interaction: { mode: 'index', intersect: false },
       plugins: {
@@ -182,11 +185,47 @@ function render(): void {
   chart.value = new ChartJS(canvas.value, buildConfig())
 }
 
+/**
+ * Force a full redraw at the current size.
+ *
+ * `Chart.resize()` alone only rescales what was already drawn: if the chart was
+ * first created while the grid column was still settling, the points beyond the
+ * original draw width stay clipped — a bar chart fills 60% of its panel and the
+ * rest is empty. Destroying and rebuilding re-runs the layout against the real
+ * box.
+ */
+function relayout(): void {
+  if (!canvas.value) return
+  chart.value?.destroy()
+  chart.value = new ChartJS(canvas.value, buildConfig())
+}
+
 watch(() => [props.labels, props.datasets], () => render(), { deep: true })
 
-onMounted(render)
+// A chart drawn while the panel was still collapsing keeps its stale box, so
+// nudge it once the data and the loading flag have both landed.
+watch(
+  () => [props.loading, props.datasets.length],
+  () => nextTick(() => relayout()),
+  { flush: 'post' },
+)
+
+onMounted(() => {
+  render()
+  // A grid column is not at its final width on the first frame.
+  requestAnimationFrame(() => relayout())
+})
+
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined' || !canvas.value) return
+  resizeObserver = new ResizeObserver(() => relayout())
+  resizeObserver.observe(canvas.value.parentElement ?? canvas.value)
+})
 
 onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
   chart.value?.destroy()
   chart.value = null
 })
@@ -216,12 +255,19 @@ onBeforeUnmount(() => {
         <p class="text-[0.875rem] text-ink-subtle">{{ emptyMessage }}</p>
       </div>
 
-      <canvas
-        v-show="!loading && hasData()"
-        ref="canvas"
-        :aria-label="title ?? 'Chart'"
-        role="img"
-      />
+<!--
+        The canvas is always in the DOM and absolutely positioned so it fills
+        the panel.
+
+        It must NOT be behind a v-show: while hidden the canvas measures 0x0,
+        Chart.js records that size, and the chart never recovers when the
+        element becomes visible — which is exactly how the doughnut ended up as
+        a tiny ring in an empty panel. The loading and empty states overlay it
+        with their own background instead.
+      -->
+      <div class="absolute inset-0">
+        <canvas ref="canvas" class="h-full w-full" :aria-label="title ?? 'Chart'" role="img" />
+      </div>
     </div>
   </section>
 </template>

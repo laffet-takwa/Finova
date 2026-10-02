@@ -7,6 +7,7 @@ import com.finova.common.error.ErrorCode;
 import com.finova.user.domain.AuditLog;
 import com.finova.user.domain.User;
 import com.finova.user.dto.AdminStatsResponse;
+import com.finova.user.dto.AuthUserResponse;
 import com.finova.user.dto.ChangePasswordRequest;
 import com.finova.user.dto.SecurityStatusResponse;
 import com.finova.user.dto.UpdateProfileRequest;
@@ -104,13 +105,41 @@ class UserProfileServiceTest {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(stored));
 
         profileService.updateProfile(USER_ID,
-                new UpdateProfileRequest("  Takwa  ", " Ferchichi ", "  "));
+                new UpdateProfileRequest("  Takwa  ", " Ferchichi ", "  ", null));
 
         assertThat(stored.getFirstName()).isEqualTo("Takwa");
         assertThat(stored.getLastName()).isEqualTo("Ferchichi");
         assertThat(stored.getPhone()).isNull();
         assertThat(stored.getEmail()).isEqualTo("takwa@finova.dev");
         assertThat(stored.getRole()).isEqualTo(Role.CUSTOMER);
+    }
+
+    @Test
+    @DisplayName("Echoing the current address back is accepted")
+    void shouldAcceptTheUnchangedEmailOnAProfileUpdate() {
+        User stored = user();
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(stored));
+
+        AuthUserResponse response = profileService.updateProfile(USER_ID,
+                new UpdateProfileRequest("Takwa", "Ferchichi", "+216 55 214 780", "  TAKWA@Finova.DEV "));
+
+        assertThat(response.email()).isEqualTo("takwa@finova.dev");
+    }
+
+    @Test
+    @DisplayName("A different address of record is refused instead of being silently ignored")
+    void shouldRefuseAnEmailChangeOnAProfileUpdate() {
+        User stored = user();
+        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(stored));
+
+        assertThatThrownBy(() -> profileService.updateProfile(USER_ID,
+                new UpdateProfileRequest("Takwa", "Ferchichi", null, "attacker@example.dev")))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+
+        assertThat(stored.getEmail()).isEqualTo("takwa@finova.dev");
+        verify(userRepository, never()).save(any(User.class));
     }
 
     @Test

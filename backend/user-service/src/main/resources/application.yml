@@ -37,6 +37,20 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # The audit announcement is published on the request thread, so the default
+        # 60s metadata block would hold a sign-in open for a minute whenever the
+        # broker is unreachable. Two seconds is enough to publish when the broker is
+        # healthy and short enough that an outage is felt as a logged warning.
+        max.block.ms: ${KAFKA_MAX_BLOCK_MS:2000}
+        delivery.timeout.ms: ${KAFKA_DELIVERY_TIMEOUT_MS:120000}
+    admin:
+      # Topic creation is best effort: the service must still start, and serve
+      # traffic, when the broker is not up yet.
+      fail-fast: false
+      properties:
+        request.timeout.ms: ${KAFKA_ADMIN_TIMEOUT_MS:5000}
+        default.api.timeout.ms: ${KAFKA_ADMIN_TIMEOUT_MS:5000}
     listener:
       ack-mode: record
       missing-topics-fatal: false
