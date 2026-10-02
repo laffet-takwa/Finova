@@ -78,6 +78,11 @@ const toneClasses = computed(() => {
             data-autofocus
           />
         </div>
+
+        <!-- Optional extra content, e.g. the reviewer's note textarea. -->
+        <div v-if="$slots.default" class="mt-4">
+          <slot />
+        </div>
       </div>
     </div>
 

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { adminApi, type AdminUserFilters } from '@/api/adminApi'
 import { accountApi, userApi } from '@/api'
+import { transactionApi } from '@/api/transactionApi'
 import type {
   Account,
   AccountFilters,
@@ -64,18 +65,27 @@ export const useAdminStore = defineStore('admin', () => {
     loading.value = true
     error.value = null
 
-    const [usersResult, accountsResult, transactionsResult, alertsResult, auditResult, activityResult] =
-      await Promise.allSettled([
-        userApi.adminStats(),
-        accountApi.adminStats(),
-        adminApi.transactions({ page: 0, size: 1 }),
-        adminApi.alerts({ page: 0, size: 1 }),
-        adminApi.auditLogs({ page: 0, size: 8 }),
-        adminApi.activityFeed({ page: 0, size: 8 }),
-      ])
+    const [
+      usersResult,
+      accountsResult,
+      transactionStatsResult,
+      transactionsResult,
+      alertsResult,
+      auditResult,
+      activityResult,
+    ] = await Promise.allSettled([
+      userApi.adminStats(),
+      accountApi.adminStats(),
+      transactionApi.adminStats(),
+      adminApi.transactions({ page: 0, size: 1 }),
+      adminApi.alerts({ page: 0, size: 1, status: 'OPEN' }),
+      adminApi.auditLogs({ page: 0, size: 8 }),
+      adminApi.activityFeed({ page: 0, size: 8 }),
+    ])
 
     if (usersResult.status === 'fulfilled') userStats.value = usersResult.value
     if (accountsResult.status === 'fulfilled') accountStats.value = accountsResult.value
+    if (transactionStatsResult.status === 'fulfilled') transactionStats.value = transactionStatsResult.value
     if (transactionsResult.status === 'fulfilled') {
       const { content: _content, ...rest } = transactionsResult.value
       transactions.value = { content: [], ...rest }
@@ -87,6 +97,7 @@ export const useAdminStore = defineStore('admin', () => {
     const allFailed =
       usersResult.status === 'rejected' &&
       accountsResult.status === 'rejected' &&
+      transactionStatsResult.status === 'rejected' &&
       transactionsResult.status === 'rejected' &&
       alertsResult.status === 'rejected'
     if (allFailed) error.value = 'Unable to load the administration overview.'
