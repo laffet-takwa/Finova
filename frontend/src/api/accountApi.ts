@@ -49,6 +49,13 @@ export interface AdminUserFilters {
   sort?: string
 }
 
+/**
+ * Every administrative route sits under the `admin` path segment on purpose:
+ * the api-gateway enforces `ROLE_ADMIN` on any path containing `admin`, so a
+ * CUSTOMER token is rejected at the edge before the request reaches the
+ * service. Keep that segment — moving these routes back to bare `/users/…`
+ * would silently drop the perimeter check.
+ */
 export const userApi = {
   me: (options?: RequestOptions) => http.get<import('@/types').AuthUser>('/users/me', options),
 
@@ -64,14 +71,16 @@ export const userApi = {
     http.get<SecurityStatus>('/users/me/security', options),
 
   adminList: (filters: AdminUserFilters, options?: RequestOptions) =>
-    http.get<PageResponse<UserSummary>>('/users', { ...options, params: filters as never }),
+    http.get<PageResponse<UserSummary>>('/users/admin', { ...options, params: filters as never }),
 
-  adminGet: (id: string, options?: RequestOptions) => http.get<UserSummary>(`/users/${id}`, options),
+  adminGet: (id: string, options?: RequestOptions) =>
+    http.get<UserSummary>(`/users/admin/${id}`, options),
 
   adminUpdateStatus: (id: string, status: UserStatus, reason?: string, options?: RequestOptions) =>
-    http.put<UserSummary>(`/users/${id}/status`, { status, reason }, options),
+    http.put<UserSummary>(`/users/admin/${id}/status`, { status, reason }, options),
 
-  adminStats: (options?: RequestOptions) => http.get<UserStatsSummary>('/users/stats/summary', options),
+  adminStats: (options?: RequestOptions) =>
+    http.get<UserStatsSummary>('/users/admin/stats', options),
 
   auditLogs: (
     filters: {
@@ -85,5 +94,9 @@ export const userApi = {
       size?: number
     },
     options?: RequestOptions,
-  ) => http.get<PageResponse<AuditLogEntry>>('/users/audit-logs', { ...options, params: filters as never }),
+  ) =>
+    http.get<PageResponse<AuditLogEntry>>('/users/admin/audit-logs', {
+      ...options,
+      params: filters as never,
+    }),
 }
