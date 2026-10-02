@@ -9,6 +9,13 @@ finova:
       enabled: true
     reconcile-interval-ms: 15000
     reconcile-threshold-seconds: 30
+    demo:
+      # The seeder resolves these through GET /api/accounts/lookup?accountNumber=.
+      # The directory has no email-to-accounts endpoint a service token may call,
+      # so the demo accounts are declared by number here.
+      primary-checking: ${DEMO_PRIMARY_CHECKING:}
+      primary-savings: ${DEMO_PRIMARY_SAVINGS:}
+      counterparties: ${DEMO_COUNTERPARTIES:}
 
 logging:
   level:

@@ -5,9 +5,11 @@ import java.math.BigDecimal;
 /**
  * {@code GET /api/accounts/{id}} response as consumed by the transaction service.
  * <p>
- * {@code balance} is only ever read when the ledger projection is created for the
- * first time; from then on {@code ledger_account.balance} is authoritative and
- * this field is informational.
+ * Used for the sender leg only. {@code balance} is read exactly once - when the
+ * sender's ledger projection is created - and becomes the opening balance; from
+ * then on {@code ledger_account.balance} is authoritative and this field is
+ * informational. The receiver leg uses {@link AccountLookupResponse}, which
+ * deliberately carries no balance.
  */
 public record AccountResponse(
         String id,

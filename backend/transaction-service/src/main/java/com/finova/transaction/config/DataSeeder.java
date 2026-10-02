@@ -1,11 +1,10 @@
 package com.finova.transaction.config;
 
-import com.finova.common.domain.AccountType;
 import com.finova.common.domain.Currency;
 import com.finova.common.domain.TransactionStatus;
 import com.finova.common.domain.TransactionType;
 import com.finova.common.support.Money;
-import com.finova.transaction.client.AccountResponse;
+import com.finova.transaction.client.AccountLookupResponse;
 import com.finova.transaction.client.AccountServiceClient;
 import com.finova.transaction.domain.LedgerAccount;
 import com.finova.transaction.domain.LedgerEvent;
@@ -34,17 +33,21 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
  * Realistic demo ledger for the local stack (profile {@code dev} only).
  * <p>
- * Demo holders are resolved lazily through the account directory. If that service
- * is not running, the seeder logs a warning and leaves the ledger empty: it must
- * never stop this service from starting.
+ * Demo accounts are configured by account number and resolved through the
+ * beneficiary lookup, the same single directory call the transfer flow uses. The
+ * directory is never asked to map an email to accounts: that endpoint is
+ * owner-scoped, so it could not enumerate the demo holders' accounts in the first
+ * place.
+ * <p>
+ * If the directory is unreachable, or the demo numbers are not configured, the
+ * seeder logs a warning and leaves the ledger empty - it must never stop this
+ * service from starting.
  * <p>
  * The money is internally consistent. Every completed seed moves real money and
  * writes both double-entry legs, the walk runs in chronological order, and the
@@ -56,8 +59,6 @@ import java.util.UUID;
 public class DataSeeder {
 
     private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
-    private static final List<String> DEMO_EMAILS = List.of(
-            "takwa@finova.dev", "ines.bouzid@finova.dev", "yassine.trabelsi@finova.dev", "salma.gharbi@finova.dev");
     private static final String PRIMARY_EMAIL = "takwa@finova.dev";
     private static final String DEMO_CURRENCY = Currency.TND.name();
     private static final BigDecimal CHECKING_TARGET = new BigDecimal("12450.750");
@@ -71,6 +72,7 @@ public class DataSeeder {
     private final ReferenceGenerator referenceGenerator;
     private final RequestFingerprint fingerprint;
     private final AccountNumbers accountNumbers;
+    private final TransactionProperties properties;
     private final Clock clock;
     private final TransactionTemplate transactions;
 
@@ -81,6 +83,7 @@ public class DataSeeder {
                       ReferenceGenerator referenceGenerator,
                       RequestFingerprint fingerprint,
                       AccountNumbers accountNumbers,
+                      TransactionProperties properties,
                       Clock clock,
                       PlatformTransactionManager transactionManager) {
         this.accountServiceClient = accountServiceClient;
@@ -90,6 +93,7 @@ public class DataSeeder {
         this.referenceGenerator = referenceGenerator;
         this.fingerprint = fingerprint;
         this.accountNumbers = accountNumbers;
+        this.properties = properties;
         this.clock = clock;
         this.transactions = new TransactionTemplate(transactionManager);
     }
@@ -111,23 +115,23 @@ public class DataSeeder {
             log.info("Ledger already holds {} transactions, demo data not seeded", transactionRepository.count());
             return;
         }
-        Map<String, List<AccountResponse>> directory = resolveDemoAccounts();
-        List<AccountResponse> primary = directory.get(PRIMARY_EMAIL);
-        if (primary == null || primary.isEmpty()) {
-            log.warn("Demo customer {} not found in the account directory; ledger left empty", PRIMARY_EMAIL);
+        LedgerAccount checking = resolveDemoAccount(properties.getDemo().getPrimaryChecking(), "primary-checking");
+        LedgerAccount savings = resolveDemoAccount(properties.getDemo().getPrimarySavings(), "primary-savings");
+        if (checking == null || savings == null) {
+            log.warn("Demo account numbers are not configured; ledger left empty. "
+                    + "Set finova.transactions.demo.primary-checking and .primary-savings.");
             return;
         }
-
-        LedgerAccount checking = upsertProjection(pick(primary, AccountType.CHECKING));
-        LedgerAccount savings = upsertProjection(pick(primary, AccountType.SAVINGS));
         List<LedgerAccount> counterparties = new ArrayList<>();
-        directory.forEach((email, accounts) -> {
-            if (!PRIMARY_EMAIL.equals(email)) {
-                accounts.forEach(account -> counterparties.add(upsertProjection(account)));
+        for (String number : properties.getDemo().getCounterparties()) {
+            LedgerAccount counterparty = resolveDemoAccount(number, "counterparty");
+            if (counterparty != null) {
+                counterparties.add(counterparty);
             }
-        });
+        }
         if (counterparties.isEmpty()) {
-            log.warn("No counterparty accounts resolved; ledger left empty");
+            log.warn("No counterparty accounts resolved; ledger left empty. "
+                    + "Set finova.transactions.demo.counterparties.");
             return;
         }
 
@@ -262,44 +266,49 @@ public class DataSeeder {
         return net;
     }
 
-    private AccountResponse pick(List<AccountResponse> accounts, AccountType type) {
-        return accounts.stream()
-                .filter(account -> type.name().equals(account.accountType()))
-                .findFirst()
-                .orElseGet(() -> accounts.get(0));
-    }
-
-    private LedgerAccount upsertProjection(AccountResponse account) {
-        return ledgerRepository.findByAccountId(account.id()).orElseGet(() -> {
-            LedgerAccount created = new LedgerAccount();
-            created.setId(UUID.randomUUID().toString());
-            created.setAccountId(account.id());
-            created.setAccountNumber(accountNumbers.normalise(account.accountNumber()));
-            created.setUserId(account.userId());
-            created.setAccountType(account.accountType());
-            created.setCurrency(account.currency());
-            created.setBalance(Money.scale(account.balance()));
-            created.setStatus(account.status());
-            return ledgerRepository.save(created);
-        });
-    }
-
-    private Map<String, List<AccountResponse>> resolveDemoAccounts() {
-        Map<String, List<AccountResponse>> directory = new LinkedHashMap<>();
-        for (String email : DEMO_EMAILS) {
-            try {
-                List<AccountResponse> found = accountServiceClient.findAccountsByEmail(email);
-                if (found == null || found.isEmpty()) {
-                    log.warn("No accounts found for demo customer {}", email);
-                    continue;
-                }
-                directory.put(email, found);
-            } catch (FeignException ex) {
-                log.warn("Account directory unreachable while resolving {}: {}", email, ex.getMessage());
-                return Map.of();
-            }
+    /**
+     * Resolves one configured demo account number through the beneficiary lookup and
+     * mirrors it onto the ledger.
+     * <p>
+     * Every failure is swallowed into a warning: the seeder must never stop the
+     * service from starting, and an unreachable directory simply means no demo
+     * data. The opening balance is irrelevant here because {@link #seed()}
+     * overwrites it with the back-solved value that makes the closing figures add
+     * up.
+     */
+    private LedgerAccount resolveDemoAccount(String rawNumber, String role) {
+        String number = accountNumbers.normalise(rawNumber);
+        if (number == null || number.isEmpty()) {
+            return null;
         }
-        return directory;
+        try {
+            AccountLookupResponse lookup = accountServiceClient.lookupBeneficiary(number);
+            if (lookup == null || lookup.accountId() == null || lookup.accountId().isBlank()) {
+                log.warn("Demo {} account {} is not in the account directory", role, number);
+                return null;
+            }
+            return ledgerRepository.findByAccountId(lookup.accountId()).orElseGet(() -> {
+                LedgerAccount created = new LedgerAccount();
+                created.setId(UUID.randomUUID().toString());
+                created.setAccountId(lookup.accountId());
+                created.setAccountNumber(resolveNumber(lookup, number));
+                created.setUserId(lookup.userId());
+                created.setAccountType(lookup.accountType());
+                created.setCurrency(lookup.currency());
+                created.setBalance(Money.ZERO);
+                created.setStatus(lookup.status());
+                return ledgerRepository.save(created);
+            });
+        } catch (FeignException ex) {
+            log.warn("Account directory unreachable while resolving demo {} account {}: {}",
+                    role, number, ex.getMessage());
+            return null;
+        }
+    }
+
+    private String resolveNumber(AccountLookupResponse lookup, String requestedNumber) {
+        String returned = accountNumbers.normalise(lookup.accountNumber());
+        return returned == null || returned.isEmpty() ? requestedNumber : returned;
     }
 
     private List<Seed> seeds(LocalDate today, int counterpartyCount) {

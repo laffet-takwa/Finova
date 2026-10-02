@@ -143,6 +143,31 @@ class TransferRequestValidatorTest {
                 codeOf(() -> validator.validate(request("100", TND), sameAsSender, sender, OWNER, false)));
     }
 
+    /**
+     * The directory rejects a customer transferring to their own account with a
+     * 400, which {@code LedgerProjectionService} already remaps. An ADMIN does not
+     * trip that guard - the directory has no reason to refuse them - so the
+     * validator is the layer that has to catch it.
+     */
+    @Test
+    void shouldRejectSenderAndReceiverIdenticalForAnAdminSendingToTheirOwnAccount() {
+        LedgerAccount receiverResolvedByLookup = ledgerAccount("acct-sender", "TN5800000000000001", OWNER, ACTIVE,
+                "5000.000");
+
+        assertEquals(ErrorCode.SENDER_RECEIVER_IDENTICAL,
+                codeOf(() -> validator.validate(request("100", TND), sender, receiverResolvedByLookup,
+                        OWNER, true)));
+    }
+
+    @Test
+    void shouldRejectSenderAndReceiverIdenticalWhenOnlyTheAccountNumbersMatch() {
+        receiver.setAccountId("acct-different-id");
+        receiver.setAccountNumber(sender.getAccountNumber());
+
+        assertEquals(ErrorCode.SENDER_RECEIVER_IDENTICAL,
+                codeOf(() -> validator.validate(request("100", TND), sender, receiver, OWNER, true)));
+    }
+
     @Test
     void shouldRejectCurrencyNotSupported() {
         assertEquals(ErrorCode.CURRENCY_NOT_SUPPORTED,

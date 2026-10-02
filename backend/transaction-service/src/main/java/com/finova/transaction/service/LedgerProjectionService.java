@@ -13,10 +13,10 @@ import com.finova.transaction.repository.LedgerAccountRepository;
 import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -59,33 +59,89 @@ public class LedgerProjectionService {
                 .orElseGet(() -> project(guard(() -> accountServiceClient.getAccount(id), "getAccount", id)));
     }
 
-    /** Rule 4: the receiver, resolved by the account number the customer typed. */
+    /**
+     * Rule 4: the receiver, resolved by the account number the customer typed.
+     * <p>
+     * The directory's list endpoints are owner-scoped, so for a customer token
+     * they can never name someone else's account. The beneficiary lookup is
+     * therefore the single source of truth for this leg and is consulted on every
+     * transfer, not only when the projection is missing: it is the caller-scoped
+     * read, so it also rejects a transfer to the caller's own account.
+     */
     @Transactional
     public LedgerAccount resolveByAccountNumber(String accountNumber) {
         String number = accountNumbers.normalise(accountNumber);
         if (number == null || number.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_ERROR, "receiverAccountNumber is required.");
         }
-        return repository.findByAccountNumber(number).orElseGet(() -> resolveUnknownNumber(number));
+        return projectFromLookup(lookupReceiver(number), number);
     }
 
     /**
-     * A number the ledger has never seen is first validated against the directory
-     * and then resolved to its account id, which is the only shape carrying both
-     * the id and the balance needed to open the projection.
+     * Calls the directory and translates its failure modes into the error codes
+     * the client contract mandates.
+     * <p>
+     * The {@code 400} is remapped on purpose: the directory rejects the caller's
+     * own account, and "the source and destination accounts must be different" is
+     * far more useful to the customer than a generic validation error. A
+     * {@code 404} is a genuinely unknown number; anything else - including a
+     * connection failure, which Feign reports with status -1 - is an outage.
      */
-    private LedgerAccount resolveUnknownNumber(String number) {
-        AccountLookupResponse lookup = guard(
-                () -> accountServiceClient.lookupBeneficiary(number), "lookupBeneficiary", number);
-        if (lookup == null) {
+    private AccountLookupResponse lookupReceiver(String number) {
+        AccountLookupResponse lookup;
+        try {
+            lookup = accountServiceClient.lookupBeneficiary(number);
+        } catch (FeignException ex) {
+            int status = ex.status();
+            log.warn("Account directory lookup failed for {} with status {}: {}", number, status, ex.getMessage());
+            if (status == HttpStatus.BAD_REQUEST.value()) {
+                throw new BusinessException(ErrorCode.SENDER_RECEIVER_IDENTICAL,
+                        ErrorCode.SENDER_RECEIVER_IDENTICAL.defaultMessage());
+            }
+            if (status == HttpStatus.NOT_FOUND.value()) {
+                throw BusinessException.notFound(ErrorCode.ACCOUNT_NOT_FOUND, "Account", number);
+            }
+            throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, DIRECTORY_UNAVAILABLE);
+        }
+        if (lookup == null || lookup.accountId() == null || lookup.accountId().isBlank()) {
             throw BusinessException.notFound(ErrorCode.ACCOUNT_NOT_FOUND, "Account", number);
         }
-        List<AccountResponse> matches = guard(
-                () -> accountServiceClient.findAccounts(number), "findAccounts", number);
-        if (matches == null || matches.isEmpty()) {
-            throw BusinessException.notFound(ErrorCode.ACCOUNT_NOT_FOUND, "Account", number);
+        return lookup;
+    }
+
+    /**
+     * Mirrors a beneficiary lookup onto the ledger.
+     * <p>
+     * On first sight the receiver projection opens at zero: the lookup carries no
+     * balance by design, and {@code account.opened} is the channel that announces
+     * an account's opening balance. The balance is never overwritten on the update
+     * path, so an existing projection keeps the money this service has moved.
+     */
+    private LedgerAccount projectFromLookup(AccountLookupResponse lookup, String requestedNumber) {
+        LedgerAccount existing = repository.findByAccountId(lookup.accountId()).orElse(null);
+        if (existing != null) {
+            existing.setAccountNumber(resolveNumber(lookup, requestedNumber));
+            existing.setUserId(lookup.userId());
+            existing.setAccountType(lookup.accountType());
+            existing.setCurrency(lookup.currency());
+            existing.setStatus(lookup.status());
+            return repository.save(existing);
         }
-        return project(matches.get(0));
+        LedgerAccount created = new LedgerAccount();
+        created.setId(UUID.randomUUID().toString());
+        created.setAccountId(lookup.accountId());
+        created.setAccountNumber(resolveNumber(lookup, requestedNumber));
+        created.setUserId(lookup.userId());
+        created.setAccountType(lookup.accountType());
+        created.setCurrency(lookup.currency());
+        created.setBalance(Money.ZERO);
+        created.setStatus(lookup.status());
+        return repository.save(created);
+    }
+
+    private String resolveNumber(AccountLookupResponse lookup, String requestedNumber) {
+        String returned = accountNumbers.normalise(lookup.accountNumber());
+        return returned == null || returned.isEmpty() ? requestedNumber : returned;
     }
 
     /** Consumes {@code account.opened} and creates or refreshes the projection. */
