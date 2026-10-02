@@ -49,14 +49,15 @@ const SCREENS = [
   { name: 'register', role: 'none', route: '/register' },
 
   { name: 'dashboard', role: 'customer', route: '/dashboard', settle: 2600 },
+  { name: 'accounts', role: 'customer', route: '/accounts', settle: 2200 },
   {
     name: 'accounts',
     role: 'customer',
     route: '/accounts',
     settle: 1800,
     prepare: async (page) => {
-      await openModalIfPresent(page, 'Open new account')
-      await sleep(600)
+      await clickByText(page, 'Open new account')
+      await sleep(800)
     },
     modalSuffix: '-new-account',
   },
