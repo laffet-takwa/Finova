@@ -189,10 +189,11 @@ private final AccountRepository accountRepository;
         return accountMapper.toBalance(account);
     }
 
-    /**
-     * Minimal receiver information for the transfer review screen. The holder
-     * name is never exposed, and a customer may not look up their own account
-     * as a beneficiary.
+/**
+     * Receiver information for the transfer review screen, including the opaque
+     * identifiers the payer needs to address the beneficiary. The holder name is
+     * never exposed and no money detail is disclosed, and a customer may not look
+     * up their own account as a beneficiary.
      */
     @Transactional(readOnly = true)
     public AccountLookupResponse lookupBeneficiary(String accountNumber) {

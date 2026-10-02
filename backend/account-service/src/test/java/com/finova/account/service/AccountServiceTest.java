@@ -426,6 +426,21 @@ class AccountServiceTest {
     }
 
     @Test
+    void shouldReturnTheAccountAndOwnerIdentifiersOfABeneficiary() {
+        Account account = AccountFixtures.account("acc-2", OTHER_CUSTOMER_ID, AccountStatus.ACTIVE,
+            new BigDecimal("1000.000"));
+        when(accountRepository.findByAccountNumber(AccountFixtures.ACCOUNT_NUMBER)).thenReturn(Optional.of(account));
+
+        var lookup = accountService.lookupBeneficiary("TN58 1000 0123 4567 8901 23");
+
+        assertEquals("acc-2", lookup.accountId());
+        assertEquals(OTHER_CUSTOMER_ID, lookup.userId());
+        assertEquals("TN58 1000 0123 4567 8901 23", lookup.accountNumber());
+        assertEquals(AccountStatus.ACTIVE, lookup.status());
+        assertEquals("Finova Bank", lookup.bankName());
+    }
+
+    @Test
     void shouldNotLeakTheHolderNameWhenLookingUpABeneficiary() {
         Account account = AccountFixtures.account("acc-1", OTHER_CUSTOMER_ID, AccountStatus.ACTIVE,
             new BigDecimal("1.000"));

@@ -50,12 +50,14 @@ public interface AccountMapper {
         String accountNumber = account.getAccountNumber();
         String masked = AccountNumbers.mask(accountNumber);
         return new AccountLookupResponse(
+            account.getId(),
+            account.getUserId(),
             AccountNumbers.format(accountNumber),
             masked,
             account.getAccountType(),
             account.getCurrency(),
-            masked,
             account.getStatus(),
+            masked,
             AccountLookupResponse.BANK_NAME);
     }
 }

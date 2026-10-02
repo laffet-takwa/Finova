@@ -158,7 +158,9 @@ public class AccountController {
 
     @GetMapping("/lookup")
     @Operation(summary = "Look up a transfer beneficiary",
-        description = "Masked receiver details only. The holder name is never exposed and your own account is rejected.")
+        description = "Receiver details for a payment the caller is about to make. Discloses the opaque accountId "
+            + "and userId the payer needs to address the beneficiary, never the holder name, no balance and no "
+            + "contact details. The caller's own account is rejected.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Beneficiary found"),
         @ApiResponse(responseCode = "400", description = "Malformed number, or your own account", content = @Content),

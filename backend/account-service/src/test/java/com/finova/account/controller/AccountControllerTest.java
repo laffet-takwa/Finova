@@ -1,5 +1,6 @@
 package com.finova.account.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finova.account.config.SecurityConfig;
 import com.finova.account.config.WebSupportConfig;
@@ -34,9 +35,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -206,6 +209,73 @@ class AccountControllerTest {
             .andExpect(jsonPath("$[0].bankName").value("Finova Bank"));
 
         verify(accountService, never()).listForUser(anyString(), any(AccountListFilter.class));
+    }
+
+    @Test
+    void shouldReturnOnlyOpaqueIdentifiersForABeneficiaryLookup() throws Exception {
+        Account beneficiary = AccountFixtures.account("acc-2", OTHER_CUSTOMER_ID, AccountStatus.ACTIVE,
+            new BigDecimal("1000.000"));
+        when(accountService.lookupBeneficiary("TN58 1000 0123 4567 8901 23"))
+            .thenReturn(new AccountMapperImpl().toLookup(beneficiary));
+
+        String body = mockMvc.perform(get("/api/accounts/lookup")
+                .param("accountNumber", "TN58 1000 0123 4567 8901 23")
+                .with(jwt(CUSTOMER_ID, AuthenticatedUser.ROLE_CUSTOMER)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accountId").value("acc-2"))
+            .andExpect(jsonPath("$.userId").value(OTHER_CUSTOMER_ID))
+            .andExpect(jsonPath("$.holderDisplayName").value("TN58 •••• •••• 8901 23"))
+            .andReturn().getResponse().getContentAsString();
+
+        JsonNode json = objectMapper.readTree(body);
+        List<String> fields = new ArrayList<>();
+        json.fieldNames().forEachRemaining(fields::add);
+        assertEquals(List.of("accountId", "userId", "accountNumber", "maskedAccountNumber", "accountType",
+            "currency", "status", "holderDisplayName", "bankName"), fields,
+            "the lookup response must not gain a money or profile field");
+
+        assertFalse(body.contains("balance"), body);
+        assertFalse(body.contains("availableBalance"), body);
+        assertFalse(body.contains("firstName"), body);
+        assertFalse(body.contains("lastName"), body);
+        assertFalse(body.contains("email"), body);
+        assertFalse(body.contains("phone"), body);
+        assertFalse(body.toLowerCase().contains("takwa"), body);
+        assertFalse(body.toLowerCase().contains("ben salah"), body);
+    }
+
+    @Test
+    void shouldRejectAnonymousBeneficiaryLookupWithoutCallingTheService() throws Exception {
+        mockMvc.perform(get("/api/accounts/lookup").param("accountNumber", "TN58 1000 0123 4567 8901 23"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+
+        verify(accountService, never()).lookupBeneficiary(anyString());
+    }
+
+    @Test
+    void shouldRejectLookingUpYourOwnAccount() throws Exception {
+        when(accountService.lookupBeneficiary("TN58 1000 0123 4567 8901 23"))
+            .thenThrow(new BusinessException(ErrorCode.VALIDATION_ERROR,
+                "A transfer destination must be an account you do not hold yourself."));
+
+        mockMvc.perform(get("/api/accounts/lookup")
+                .param("accountNumber", "TN58 1000 0123 4567 8901 23")
+                .with(jwt(CUSTOMER_ID, AuthenticatedUser.ROLE_CUSTOMER)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void shouldReturn404ForAnUnknownBeneficiary() throws Exception {
+        when(accountService.lookupBeneficiary(AccountFixtures.ACCOUNT_NUMBER))
+            .thenThrow(BusinessException.notFound(ErrorCode.ACCOUNT_NOT_FOUND, "Account", "TN58100001234567890123"));
+
+        mockMvc.perform(get("/api/accounts/lookup")
+                .param("accountNumber", AccountFixtures.ACCOUNT_NUMBER)
+                .with(jwt(CUSTOMER_ID, AuthenticatedUser.ROLE_CUSTOMER)))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("ACCOUNT_NOT_FOUND"));
     }
 
     @Test
