@@ -38,7 +38,12 @@ const STATE_LABEL: Record<'done' | 'current' | 'todo', string> = {
   <nav :aria-label="ariaLabel" class="w-full">
     <!-- Desktop / tablet: full stepper -->
     <ol class="hidden items-center sm:flex">
-      <li v-for="(step, index) in steps" :key="step.label" class="flex min-w-0 flex-1 items-center">
+      <li
+        v-for="(step, index) in steps"
+        :key="step.label"
+        class="flex min-w-0 flex-1 items-center"
+        :aria-current="stateFor(index) === 'current' ? 'step' : undefined"
+      >
         <div class="flex min-w-0 items-center gap-2.5">
           <span
             class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-caption font-bold"
@@ -47,22 +52,20 @@ const STATE_LABEL: Record<'done' | 'current' | 'todo', string> = {
               'border-accent bg-accent-light text-accent-dark': stateFor(index) === 'current',
               'border-border-strong bg-surface text-ink-subtle': stateFor(index) === 'todo',
             }"
+            aria-hidden="true"
           >
-            <Check v-if="stateFor(index) === 'done'" :size="14" aria-hidden="true" />
-            <span v-else aria-hidden="true">{{ index + 1 }}</span>
-            <span class="sr-only">
-              {{ STATE_LABEL[stateFor(index)] }}: {{ step.label }}
-            </span>
+            <Check v-if="stateFor(index) === 'done'" :size="14" />
+            <span v-else>{{ index + 1 }}</span>
           </span>
 
           <span class="min-w-0">
+            <span class="sr-only">{{ STATE_LABEL[stateFor(index)] }}:</span>
             <span
               class="block truncate text-caption font-semibold"
               :class="stateFor(index) === 'todo' ? 'text-ink-subtle' : 'text-ink'"
             >
               {{ step.label }}
             </span>
-            <span class="sr-only">{{ STATE_LABEL[stateFor(index)] }}</span>
           </span>
         </div>
 

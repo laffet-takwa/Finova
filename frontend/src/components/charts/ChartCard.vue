@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
+  ArcElement,
+  BarController,
+  BarElement,
   CategoryScale,
   Chart as ChartJS,
+  DoughnutController,
   Filler,
   Legend,
+  LineController,
   LineElement,
   LinearScale,
   PointElement,
-  BarElement,
-  ArcElement,
   Tooltip,
   type ChartConfiguration,
 } from 'chart.js'
@@ -22,6 +25,11 @@ ChartJS.register(
   LineElement,
   BarElement,
   ArcElement,
+  // Renderers: without these controllers `new Chart(...)` throws
+  // `"bar" is not a registered controller` at mount time.
+  LineController,
+  BarController,
+  DoughnutController,
   Filler,
   Tooltip,
   Legend,

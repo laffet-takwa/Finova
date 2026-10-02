@@ -11,9 +11,10 @@ const props = withDefaults(
   { activeCount: 0, expandable: true, defaultOpen: false },
 )
 
-const open = defineModel<boolean>('open', { default: props.defaultOpen })
+const open = defineModel<boolean>('open')
 const emit = defineEmits<{ reset: [] }>()
 
+const isOpen = computed(() => open.value ?? props.defaultOpen)
 const hasFilters = computed(() => props.activeCount > 0)
 </script>
 
@@ -32,9 +33,9 @@ const hasFilters = computed(() => props.activeCount > 0)
         v-if="expandable && $slots.advanced"
         type="button"
         class="inline-flex h-10 items-center gap-2 rounded-md border border-border px-3 text-[0.8125rem] font-semibold text-ink-muted transition-colors hover:border-border-strong hover:bg-surface-sunken hover:text-ink"
-        :aria-expanded="open"
+        :aria-expanded="isOpen"
         aria-controls="filter-panel"
-        @click="open = !open"
+        @click="open = !isOpen"
       >
         <SlidersHorizontal :size="15" aria-hidden="true" />
         Filters
@@ -58,7 +59,7 @@ const hasFilters = computed(() => props.activeCount > 0)
     </div>
 
     <div
-      v-show="open && $slots.advanced"
+      v-show="isOpen && $slots.advanced"
       id="filter-panel"
       class="border-t border-border bg-surface-sunken px-4 py-4"
     >

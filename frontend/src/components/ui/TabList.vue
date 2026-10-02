@@ -1,12 +1,6 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
-
-export interface TabItem {
-  id: string
-  label: string
-  /** Optional trailing count (unread notifications, section totals…). */
-  count?: number | null
-}
+import { tabPanelId, type TabItem } from '@/components/ui/tabs'
 
 const props = withDefaults(
   defineProps<{
@@ -37,7 +31,7 @@ function tabId(id: string, scope: 'v' | 'h'): string {
 }
 
 function panelId(id: string): string {
-  return `tabpanel-${uid}-${id}`
+  return tabPanelId(props.ariaLabel, id)
 }
 
 function select(id: string): void {
@@ -133,7 +127,7 @@ function tabClasses(id: string): string {
 
     <!-- Mobile strip (and the only strip for `layout="horizontal"`). -->
     <div
-      class="fin-scroll-thin -mx-1 flex gap-1 overflow-x-auto px-1 pb-1"
+      class="fin-scroll-thin flex gap-1 overflow-x-auto pb-1"
       :class="layout === 'vertical' ? 'lg:hidden' : ''"
       role="tablist"
       :aria-label="ariaLabel"
