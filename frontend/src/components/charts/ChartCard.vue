@@ -67,11 +67,12 @@ const props = withDefaults(
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 const chart = shallowRef<ChartJS | null>(null)
+let lastBox = ''
 const hasData = () => props.datasets.some((set) => set.data.some((value) => (value ?? 0) > 0))
 
 const PALETTE = ['#173B5F', '#3B82F6', '#16A34A', '#F59E0B', '#DC2626', '#667085']
 
-function buildConfig(): ChartConfiguration {
+function buildConfig(animate = true): ChartConfiguration {
   const isDoughnut = props.type === 'doughnut'
   const isCurrency = props.moneyFormat && props.currency
 
@@ -106,7 +107,7 @@ function buildConfig(): ChartConfiguration {
       // A doughnut has no axes, so without this it renders at the default 2:1
       // aspect and sits as a thin ellipse in the middle of the panel.
       aspectRatio: isDoughnut ? 1.15 : undefined,
-      animation: { duration: 420, easing: 'easeOutQuart' },
+      animation: animate ? { duration: 420, easing: 'easeOutQuart' } : false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
@@ -179,25 +180,38 @@ function buildConfig(): ChartConfiguration {
   } as ChartConfiguration
 }
 
-function render(): void {
+function measure(): string {
+  const parent = canvas.value?.parentElement
+  return `${parent?.clientWidth ?? 0}x${parent?.clientHeight ?? 0}`
+}
+
+function render(animate = true): void {
   if (!canvas.value) return
   chart.value?.destroy()
-  chart.value = new ChartJS(canvas.value, buildConfig())
+  lastBox = measure()
+  chart.value = new ChartJS(canvas.value, buildConfig(animate))
 }
 
 /**
- * Force a full redraw at the current size.
+ * Force a full redraw, but only when the box has genuinely changed, and without
+ * replaying the entry animation.
  *
  * `Chart.resize()` alone only rescales what was already drawn: if the chart was
  * first created while the grid column was still settling, the points beyond the
  * original draw width stay clipped — a bar chart fills 60% of its panel and the
  * rest is empty. Destroying and rebuilding re-runs the layout against the real
  * box.
+ *
+ * The two guards matter as much as the rebuild. Rebuilding at an unchanged size
+ * (fonts settling, a scrollbar appearing) does nothing useful. Rebuilding
+ * *with* the animation replays it from zero, so a page that looks idle could sit
+ * showing a half-drawn doughnut for seconds. A layout correction is not an
+ * entrance; it should land as the finished chart.
  */
 function relayout(): void {
   if (!canvas.value) return
-  chart.value?.destroy()
-  chart.value = new ChartJS(canvas.value, buildConfig())
+  if (chart.value && measure() === lastBox) return
+  render(false)
 }
 
 watch(() => [props.labels, props.datasets], () => render(), { deep: true })
@@ -228,6 +242,7 @@ onBeforeUnmount(() => {
   resizeObserver = null
   chart.value?.destroy()
   chart.value = null
+  lastBox = ''
 })
 </script>
 

@@ -6,6 +6,6 @@ import jakarta.validation.constraints.Size;
 
 /** Administrative status change. An ADMIN may block or unblock an identity. */
 public record UpdateUserStatusRequest(
-        @NotNull UserStatus status,
-        @Size(max = 200) String reason) {
+        @NotNull(message = "is required") UserStatus status,
+        @Size(max = 200, message = "must be 200 characters or fewer") String reason) {
 }

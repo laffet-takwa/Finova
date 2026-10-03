@@ -353,7 +353,7 @@ onMounted(() => {
           <h2 id="fraud-details-heading" class="text-headline text-ink">Alert details</h2>
 
           <dl class="mt-2 divide-y divide-border border-t border-border">
-            <DetailRow label="Transaction">
+            <DetailRow label="Transaction" :value="alert.reference" mono>
               <RouterLink
                 :to="{ name: 'transaction-detail', params: { id: alert.transactionId } }"
                 class="font-mono text-[0.8125rem] text-accent underline underline-offset-2 hover:text-accent-dark"

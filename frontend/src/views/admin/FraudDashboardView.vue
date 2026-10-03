@@ -22,6 +22,7 @@ import PageHeader from '@/components/ui/PageHeader.vue'
 import Pagination from '@/components/ui/Pagination.vue'
 import RiskBadge from '@/components/ui/RiskBadge.vue'
 import RiskMeter from '@/components/ui/RiskMeter.vue'
+import ScoreBar from '@/components/ui/ScoreBar.vue'
 import SearchInput from '@/components/ui/SearchInput.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import StatCard from '@/components/ui/StatCard.vue'
@@ -89,25 +90,32 @@ const activeFilterCount = computed(
   () => [filters.search, filters.riskLevel, filters.status, filters.from, filters.to].filter((value) => String(value).trim().length > 0).length,
 )
 
-const riskLabels = computed(() => {
-  const distribution = stats.value?.riskDistribution ?? {}
-  return ['HIGH', 'MEDIUM', 'LOW'].filter((level) => (distribution[level] ?? 0) > 0)
-})
-const riskDatasets = computed(() =>
-  ['HIGH', 'MEDIUM', 'LOW']
-    .filter((level) => (stats.value?.riskDistribution?.[level] ?? 0) > 0)
-    .map((level) => ({
-      label: level === 'HIGH' ? 'High' : level === 'MEDIUM' ? 'Medium' : 'Low',
-      data: [stats.value?.riskDistribution?.[level] ?? 0],
-      color: level === 'HIGH' ? CHART.high : level === 'MEDIUM' ? CHART.medium : CHART.low,
-    })),
-)
+const riskLabels: string[] = ['High', 'Medium', 'Low']
+
+/**
+ * One dataset carrying all three bands, not one dataset per band: `ChartCard`
+ * colours a whole dataset rather than a single arc, so three datasets would draw
+ * three complete concentric rings — a chart in which no proportion is visible.
+ */
+const riskDatasets = computed(() => [
+  {
+    label: 'Assessed alerts',
+    data: [
+      stats.value?.riskDistribution?.HIGH ?? 0,
+      stats.value?.riskDistribution?.MEDIUM ?? 0,
+      stats.value?.riskDistribution?.LOW ?? 0,
+    ],
+    color: CHART.alerts,
+  },
+])
 const riskLegend = computed(() =>
-  (['HIGH', 'MEDIUM', 'LOW'] as const).map((level) => ({
+  (['HIGH', 'MEDIUM', 'LOW'] as const).map((level, index) => ({
     level,
+    label: riskLabels[index],
     count: stats.value?.riskDistribution?.[level] ?? 0,
   })),
 )
+const riskTotal = computed(() => riskLegend.value.reduce((sum, row) => sum + row.count, 0))
 
 const alertDays = computed(() => stats.value?.dailyAlerts ?? [])
 const alertDayLabels = computed(() => alertDays.value.map((point) => point.label))
@@ -287,7 +295,7 @@ onMounted(() => {
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard
         v-for="card in [
-          { key: 'open', label: 'Open Alerts', value: stats?.openAlerts ?? null, tone: 'neutral' as const, hint: 'Not yet reviewed' },
+          { key: 'open', label: 'Open Alerts', value: stats?.openAlerts ?? null, tone: 'neutral' as const, hint: 'Open or under review' },
           { key: 'high', label: 'High Risk', value: stats?.highRisk ?? null, tone: 'danger' as const, hint: 'Score 70 and above' },
           { key: 'medium', label: 'Medium Risk', value: stats?.mediumRisk ?? null, tone: 'warning' as const, hint: 'Score 40 to 69' },
           { key: 'resolved', label: 'Resolved Today', value: stats?.resolvedToday ?? null, tone: 'success' as const, hint: 'Safe or confirmed today' },
@@ -319,9 +327,9 @@ onMounted(() => {
 
     <!-- Charts -->
     <div class="grid gap-4 lg:grid-cols-2 lg:gap-5">
-      <ChartCard
-        class="min-w-0"
+<ChartCard
         v-if="stats"
+        class="min-w-0"
         type="doughnut"
         title="Risk distribution"
         subtitle="Every assessment the fraud service has scored"
@@ -334,10 +342,16 @@ onMounted(() => {
         <template #actions>
           <ul class="space-y-1 text-right">
             <li v-for="row in riskLegend" :key="row.level" class="text-caption text-ink-muted">
-              <span class="font-semibold text-ink">{{ row.count.toLocaleString('en-US') }}</span>
-              {{ row.level === 'HIGH' ? 'high' : row.level === 'MEDIUM' ? 'medium' : 'low' }}
+              <span class="font-semibold tabular-nums text-ink">
+                {{ row.count.toLocaleString('en-US') }}
+              </span>
+              {{ row.label.toLowerCase() }}
+              <span class="tabular-nums">
+                ({{ riskTotal > 0 ? Math.round((row.count / riskTotal) * 100) : 0 }}%)
+              </span>
             </li>
           </ul>
+          <p class="mt-1 text-caption text-ink-subtle">Arcs run high, then medium, then low.</p>
         </template>
       </ChartCard>
 
@@ -574,7 +588,7 @@ onMounted(() => {
         :icon="Users"
       />
 
-      <ol v-else class="mt-4 space-y-3">
+<ol v-else class="mt-4 space-y-3">
         <li v-for="(account, index) in riskyAccounts" :key="account.accountId">
           <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <span class="flex min-w-0 items-baseline gap-2">
@@ -585,20 +599,23 @@ onMounted(() => {
             </span>
             <span class="text-caption text-ink-muted">
               {{ account.count }} alert{{ account.count === 1 ? '' : 's' }} · peak
-              <span class="font-semibold text-ink">{{ account.maxRiskScore }}/100</span>
+              <span class="font-semibold tabular-nums text-ink">{{ account.maxRiskScore }}/100</span>
             </span>
           </div>
           <div class="mt-1.5">
-            <RiskMeter
+            <ScoreBar
               :score="account.maxRiskScore"
-              size="sm"
-              :label="`Peak risk score for account ${account.accountNumber}`"
+              :max="riskiestScore"
+              :label="`Account ${account.accountNumber} scored ${account.maxRiskScore} out of 100 at peak, against a leading score of ${riskiestScore}`"
             />
           </div>
-          <span class="sr-only">Bar length relative to the riskiest account on the platform.</span>
-          <span class="sr-only">Scale maximum {{ riskiestScore }} out of 100.</span>
         </li>
       </ol>
+      <p class="mt-3 text-caption text-ink-subtle">
+        Bars are scaled against the riskiest account on the list
+        <span class="font-semibold text-ink-muted">{{ riskiestScore }}/100</span>, so the
+        ranking is visible; the peak score out of 100 is printed beside each bar.
+      </p>
     </section>
 
     <ConfirmDialog

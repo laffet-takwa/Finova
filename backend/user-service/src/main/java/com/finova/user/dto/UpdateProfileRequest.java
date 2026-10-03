@@ -14,8 +14,14 @@ import jakarta.validation.constraints.Size;
  * it did not. Changing the address needs its own verified flow.
  */
 public record UpdateProfileRequest(
-        @NotBlank @Size(max = 80) String firstName,
-        @NotBlank @Size(max = 80) String lastName,
-        @Size(max = 32) String phone,
-        @Size(max = 190) String email) {
+        @NotBlank(message = "is required")
+        @Size(max = 80, message = "must be 80 characters or fewer")
+        String firstName,
+        @NotBlank(message = "is required")
+        @Size(max = 80, message = "must be 80 characters or fewer")
+        String lastName,
+        @Size(max = 32, message = "must be 32 characters or fewer")
+        String phone,
+        @Size(max = 190, message = "must be 190 characters or fewer")
+        String email) {
 }

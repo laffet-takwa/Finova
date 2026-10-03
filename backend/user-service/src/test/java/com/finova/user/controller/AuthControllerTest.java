@@ -135,6 +135,53 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("A password that satisfies the length rule but not the composition rule is refused")
+    void shouldEnforcePasswordCompositionOnRegister() throws Exception {
+        // Regression guard. The composition rule used to sit on a record accessor,
+        // where Bean Validation never reads it, so every password made of one repeated
+        // character was accepted. Only the length was actually enforced.
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"Takwa\",\"lastName\":\"Ferchichi\","
+                                + "\"email\":\"takwa@finova.dev\",\"password\":\"aaaaaaaaaaaaaa\","
+                                + "\"confirmPassword\":\"aaaaaaaaaaaaaa\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.details.password")
+                        .value("must contain an uppercase letter, a lowercase letter and a digit"));
+
+        verify(authService, never()).register(any());
+    }
+
+    @Test
+    @DisplayName("A password shorter than 10 characters is refused, in English")
+    void shouldEnforcePasswordLengthOnRegister() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"Takwa\",\"lastName\":\"Ferchichi\","
+                                + "\"email\":\"takwa@finova.dev\",\"password\":\"Ab1cdefgh\","
+                                + "\"confirmPassword\":\"Ab1cdefgh\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.details.password").value("must be between 10 and 72 characters"));
+
+        verify(authService, never()).register(any());
+    }
+
+    @Test
+    @DisplayName("Changing to a password that breaks the policy is refused")
+    void shouldEnforcePasswordCompositionOnChange() throws Exception {
+        mockMvc.perform(post("/api/users/me/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"" + PASSWORD + "\",\"newPassword\":\"passwordpassword\"}")
+                        .with(customer(CALLER)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(userProfileService, never()).changePassword(anyString(), any());
+    }
+
+    @Test
     @DisplayName("The profile route refuses an anonymous caller with the error envelope")
     void shouldRefuseAnonymousProfileAccess() throws Exception {
         mockMvc.perform(get("/api/users/me"))
